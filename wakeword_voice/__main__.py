@@ -20,17 +20,43 @@ def main():
     stt.add_argument("--model", type=Path, required=True)
     stt.add_argument("--whisper-cli", default="whisper-cli")
     stt.add_argument("--timeout", type=float, default=120)
+    stt.add_argument("--gpu", action="store_true", help="Metal GPUを使う（既定はCPU）")
     stt.add_argument("--show-text", action="store_true", help="文字起こしを標準出力に表示する")
+    capture = commands.add_parser("capture", help="呼びかけ後の依頼を収集する（AI呼び出しなし）")
+    capture.add_argument("--wake-model", type=Path, required=True)
+    capture.add_argument("--vad-model", type=Path, required=True)
+    capture.add_argument("--source-wav", type=Path, help="マイクの代わりにWAVを使う")
+    capture.add_argument("--device", type=int)
+    capture.add_argument("--listen-seconds", type=float, default=30)
+    capture.add_argument("--save-audio", type=Path, help="明示した場合のみ依頼音声を保存する")
     args = parser.parse_args()
     try:
         if args.command == "check-wav":
             result = validate_wav(args.wav)
         elif args.command == "detect-wake":
             result = detect_wake(args.wav, args.model, args.threshold)
+        elif args.command == "capture":
+            from .capture import CaptureSettings, LocalDetectors, collect, microphone_frames, wav_frames, write_wav
+            if not 0 < args.listen_seconds <= 3600:
+                raise PocError("listen-secondsは0より大きく3600秒以下にしてください")
+            try:
+                detectors = LocalDetectors(args.wake_model, args.vad_model)
+            except Exception:
+                raise PocError("検出モデルを読み込めません。依存とモデル配置を確認してください") from None
+            frames = wav_frames(args.source_wav) if args.source_wav else microphone_frames(args.device, args.listen_seconds)
+            try:
+                utterance = collect(frames, detectors, CaptureSettings(),
+                                    lambda state: print(json.dumps({"state": state}), file=sys.stderr))
+            finally:
+                frames.close()
+            if args.save_audio and utterance.pcm:
+                write_wav(args.save_audio, utterance.pcm)
+            result = {"captured": bool(utterance.pcm), "reason": utterance.reason,
+                      "seconds": len(utterance.pcm) / 32000}
         else:
             if args.timeout <= 0:
                 raise PocError("timeoutは正の秒数を指定してください")
-            value = transcribe(args.wav, args.model, args.whisper_cli, args.timeout)
+            value = transcribe(args.wav, args.model, args.whisper_cli, args.timeout, args.gpu)
             result = {"recognized": bool(value), "characters": len(value)}
             if args.show_text:
                 result["text"] = value
@@ -39,6 +65,9 @@ def main():
     except PocError as error:
         print(f"エラー: {error}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("停止しました", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1] / ".models"
 BASE = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/"
 MODELS = [
+    ("openwakeword/silero_vad.onnx", BASE + "silero_vad.onnx", "a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28"),
     ("openwakeword/embedding_model.onnx", BASE + "embedding_model.onnx", "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f"),
     ("openwakeword/melspectrogram.onnx", BASE + "melspectrogram.onnx", "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f"),
     ("openwakeword/hey_jarvis_v0.1.onnx", BASE + "hey_jarvis_v0.1.onnx", "94a13cfe60075b132f6a472e7e462e8123ee70861bc3fb58434a73712ee0d2cb"),

@@ -24,7 +24,7 @@ def validate_wav(path: Path) -> dict:
         raise PocError("WAVを読み込めません") from None
 
 
-def transcribe(wav: Path, model: Path, executable: str, timeout: float = 120) -> str:
+def transcribe(wav: Path, model: Path, executable: str, timeout: float = 120, use_gpu: bool = False) -> str:
     validate_wav(wav)
     if not model.is_file():
         raise PocError("Whisperモデルファイルがありません")
@@ -33,6 +33,8 @@ def transcribe(wav: Path, model: Path, executable: str, timeout: float = 120) ->
         # A temporary output avoids parsing console timestamps and diagnostic logs.
         arguments = [executable, "-m", str(model.resolve()), "-f", str(wav.resolve()),
                      "-l", "ja", "-otxt", "-of", str(output)]
+        if not use_gpu:
+            arguments.append("-ng")
         try:
             subprocess.run(arguments, check=True, capture_output=True, timeout=timeout)
         except FileNotFoundError:
