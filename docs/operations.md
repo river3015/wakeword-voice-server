@@ -4,15 +4,18 @@
 
 ## 起動と停止
 
-依存・モデル・VOICEVOXの準備は[技術構成](technology-stack.md)と[一往復の手順](one-turn.md)を参照。config.local.tomlで本人の公式CLI実行ファイル、作業ディレクトリ、音声デバイスを指定する。
+依存・モデル・VOICEVOXの準備は[技術構成](technology-stack.md)と[一往復の手順](one-turn.md)を参照。config.local.tomlでCodex CLIの実行ファイル、作業ディレクトリ、音声デバイスを指定する。
 
 ```sh
-.venv/bin/python scripts/run-server.py
+go build -o bin/wakeword ./cmd/wakeword
+bin/wakeword serve --config config.local.toml
 ```
 
-このコマンドは必要ならVOICEVOXを起動し、音声サーバーを継続運転する。同一プロジェクトの重複起動は拒否する。サーバーが動いている間だけcaffeinateの画面・システムスリープ防止を使う。恒久的なスリープ設定は変更しない。Macは電源に接続し、蓋を開けて使う。
+起動時に、whisper-serverとVOICEVOXが未起動なら並行して起動する。両方の準備ができてから待ち受けを始める。既に起動しているものはそのまま使い、停止もしない。同一プロジェクトの重複起動は拒否する。`prevent_sleep = true`の場合、サーバーが動いている間だけcaffeinateで画面・システムのスリープを防ぐ。恒久的なスリープ設定は変更しない。Macは電源に接続し、蓋を開けて使う。
 
-停止は起動したターミナルでCtrl-C。自分で起動したVOICEVOXとサーバーを終了し、スリープ防止も解除する。既に別途起動していたVOICEVOXは停止しない。VOICEVOXを別管理する場合は`sh scripts/run-voicevox.sh`を使う。
+停止は起動したターミナルでCtrl-C（SIGTERMでも可）。自分で起動した子プロセスを終了し、スリープ防止も解除する。whisper-serverやVOICEVOXが途中で終了した場合は、サーバーも異常終了する。LaunchAgentで運用する場合は、launchdが再起動する。
+
+状態はJSON行で標準エラーへ、一往復の結果と`timings_ms`は標準出力へ出す。依頼・返答の内容は出さない。子プロセスの出力は発話を含み得るため保存しない。
 
 ## 会話
 
@@ -34,10 +37,10 @@ Codexのread-onlyでは編集の依頼は実行できない。自宅の特定リ
 
 ## 任意のログイン時起動
 
-自動起動は任意。plist生成は登録を行わない。
+自動起動は任意。plistの生成だけでは登録されない。`go run`ではなく、ビルドした実行ファイルから生成する。
 
 ```sh
-python3 scripts/create-launch-agent.py
+bin/wakeword launch-agent --config config.local.toml
 plutil -lint .runtime/local.wakeword-voice-server.plist
 mkdir -p "$HOME/Library/LaunchAgents"
 cp .runtime/local.wakeword-voice-server.plist "$HOME/Library/LaunchAgents/"
@@ -52,9 +55,16 @@ launchctl bootout "gui/$(id -u)/local.wakeword-voice-server"
 rm "$HOME/Library/LaunchAgents/local.wakeword-voice-server.plist"
 ```
 
-マイク権限を確認してから登録する。ターミナル起動時の許可がLaunchAgentにも適用されるとは限らないため、登録後に実機確認する。サービスの状態ログは.runtimeへ保存する。VOICEVOXのアクセスログは保存しない。故障時に再起動するKeepAlive設定なので、停止はbootoutで行う。この環境ではplist生成とplutil検証だけを実行しており、登録は行っていない。
+マイク権限を確認してから登録する。plistには実行ファイルと設定ファイルの絶対パスが入るので、移動した場合は再生成する。実行ファイルを再ビルドした後もマイク許可が維持されるかは未確認。ターミナル起動時の許可がLaunchAgentにも適用されるとは限らないため、登録後に実機確認する。サービスの状態ログは.runtimeへ保存する。VOICEVOXのアクセスログは保存しない。故障時に再起動するKeepAlive設定なので、停止はbootoutで行う。この環境ではplist生成とplutil検証だけを実行しており、登録は行っていない。
 
-## 検証記録（2026-10-03）
+## Go版の検証記録（2026-10-03）
+
+- 内蔵マイクの3秒待ち受けを2回実施。無音時にAIを呼ばず、2回とも約3.2秒で正常終了した。ビルド直後の初回だけ、最初の待ち受けが約40秒かかった。新しい実行ファイルに対するmacOSのマイク許可の確認とみられる（推測）。
+- whisper-serverとVOICEVOXを自動起動し、終了後に子プロセスやcaffeinateが残らないことを確認。
+- 重複起動の拒否、子プロセスの準備待ち・起動直後の終了検出、失敗後の待ち受け復帰は単体テストで確認。
+- LaunchAgentの登録、人の声、長時間運転は未検証。
+
+## Python版の検証記録（2026-10-03）
 
 - 単体テスト27件通過：履歴期限・上限、完全一致の制御語、履歴破棄、失敗後の次サイクル復帰、停止時の履歴破棄、受付反響の除外を含む。
 - 3秒のマイク待ち受けを2回実施し、無音時にAIを呼ばず正常終了。

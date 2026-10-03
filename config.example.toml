@@ -1,32 +1,49 @@
-# 自宅・非商用向け。コピー先をconfig.local.tomlにするとGit対象外。
-# パスはこの設定ファイルの場所を基準に解決する。
-provider = "codex" # codex / claude
-ai_executable = "codex"
+# 自宅・非商用向け。config.local.tomlにコピーして使う（Git対象外）。
+# パスはこの設定ファイルの場所を基準に解決する。省略した項目は既定値になる。
+
+# AI：公式Codex CLI。本人のログインを使う
+ai_executable = "codex" # PATHにない場合はフルパス
 workdir = "."
-sandbox = "read-only" # Codexのみworkspace-writeも可。承認要求は自動許可しない。
+sandbox = "read-only" # workspace-writeも可。承認要求は自動許可しない
 ai_timeout = 180
+reasoning_effort = "low" # minimal / low / medium / high。空ならCodexの既定。低いほど速い
+# model = "" # 空ならCodexの既定モデル
+
+# 検出：ONNX Runtimeと openWakeWord・Silero VAD のモデル
+onnxruntime_library = ".vendor/onnxruntime/onnxruntime-osx-arm64-1.29.0/lib/libonnxruntime.1.29.0.dylib"
 wake_model = ".models/openwakeword/hey_mycroft_v0.1.onnx"
 vad_model = ".models/openwakeword/silero_vad.onnx"
+
+# 文字起こし：whisper-serverを常駐させる。未起動ならこのパスから起動する
+whisper_server = ".vendor/whisper.cpp/build/bin/whisper-server"
 whisper_model = ".models/whisper/ggml-base.bin"
-whisper_cli = ".vendor/whisper.cpp/build/bin/whisper-cli"
-stt_timeout = 120
-gpu = false
-receipt_cue = true
+whisper_url = "http://127.0.0.1:8178"
+whisper_threads = 4
+gpu = true # Metalを使う
+stt_timeout = 60
+
+# 読み上げ：VOICEVOX。未起動ならこのパスから起動する
 voicevox_url = "http://127.0.0.1:50021"
-speaker = 0 # VOICEVOX:四国めたん（あまあま）。選択音声の規約を確認する。
+voicevox_engine = ".vendor/voicevox/engine/macos-arm64/run"
+speaker = 0 # VOICEVOX:四国めたん（あまあま）。選択音声の規約を確認する
 voicevox_credit = "VOICEVOX:四国めたん"
-# device = 0 # マイクのデバイス番号。省略時はOSの既定。
+
+# 音声デバイス：名前の一部。空ならOSの既定。一覧は bin/wakeword devices
+input_device = ""
+output_device = ""
+receipt_cue = true
+prevent_sleep = true # 起動中だけcaffeinateでスリープを防ぐ
 
 [capture]
 wake_threshold = 0.5
 speech_threshold = 0.5
-silence_seconds = 1.2
+silence_seconds = 1.2 # 短くすると速いが、話の途中で切れやすくなる
 start_timeout = 5.0
 max_seconds = 30.0
 min_speech_seconds = 0.24
 settle_seconds = 0.32
 
 [conversation]
-ttl = 300 # 最後の成功応答から5分で履歴破棄。追加依頼もウェイクワードで起動する。
+ttl = 300 # 最後の成功応答から5分で履歴破棄
 max_turns = 6
 max_characters = 16000

@@ -9,3 +9,4 @@ build/
 config.local.toml
 :memory:.ses
 .runtime/
+bin/

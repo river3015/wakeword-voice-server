@@ -22,6 +22,8 @@
 | Open JTalk | Modified BSD | 選択する辞書・音声モデルは別途確認 | なし | 日本語TTSの代替候補。モデル監査は未完了 |
 | macOSの音声合成 | OS付属機能。OSSとして扱わない | OSの利用条件に従う | 別途音声API課金を使わない構成が可能 | OSS優先方針では補助候補 |
 
+Go版の実装で使うライブラリ：ONNX Runtime（MIT）、onnxruntime_go（MIT）、malgo／miniaudio（パブリックドメイン。miniaudioはMIT No Attributionも選べる）、BurntSushi/toml（MIT）。各リポジトリのLICENSEファイルで確認した。
+
 「なし」はローカル実行に伴うベンダーへの定額・従量利用料が不要という意味。Mac、電気、ストレージ、モデルのダウンロード、開発・保守、独自学習の計算資源は別。
 
 MIT／Apache-2.0でも配布時の著作権・ライセンス表示等は必要。GPL／LGPLを含む成果物を配布する場合は、組み込み方と変更範囲に応じたソース提供等の条件を確認する。単に個人のMacで実行することと、依存物を同梱して配布することを分ける。
