@@ -21,7 +21,7 @@ cp config.example.toml config.local.toml
 bin/wakeword once --config config.local.toml
 ```
 
-呼びかけ→日本語依頼→文字起こし→AI→VOICEVOX→スピーカー再生を一往復して終了する。テスト音声で試す場合は`--source-wav /absolute/path/combined.wav`、呼びかけなしの日本語WAVなら`--request-wav /absolute/path/request.wav`を指定する。どちらもAIの利用量を消費する。
+呼びかけ→日本語依頼→文字起こし→AI→VOICEVOX→スピーカー再生を一往復して終了する。テスト音声で試す場合は`--source-wav /absolute/path/combined.wav`、呼びかけなしの日本語WAVなら`--request-wav /absolute/path/request.wav`を指定する。`--request-wav`を複数指定すると、同じ会話で順に依頼し、2件目以降に履歴を渡す。どちらもAIの利用量を消費する。
 
 ## AIの権限・データ
 
@@ -43,6 +43,7 @@ bin/wakeword once --config config.local.toml
 - Claude Code 2.1.288、本人のログインで、連結WAVからの一往復が成功。録音完了から最初の再生まで4.1秒（Codexは7.5〜9.4秒）。
 - 複数文の返答（371文字、507文字）で、逐次受信と文ごとの読み上げを確認。合成音声の依頼は、Whisper baseで「四季」「四文」が「式」「4問」と誤認識されていた。
 - 返答の終了後にCLIの後処理を待たないこと、ツール利用後の文、エラー・タイムアウト・途中での受信停止は偽のCLIを使ったテストで確認。実際のツール利用（ファイルの読み取り）は未確認。
+- 追加依頼：`--request-wav`を3件指定し、「合言葉はりんごです。覚えておいてください」「さっきの合言葉は何でしたか」「会話終了」を順に流した。2件目の返答は「さっきの合言葉は、リンゴでした」で、3件目は`end_conversation`で終了した。返答本文は、読み上げを偽物に差し替えた一時プログラムで確認した（コミットしていない）。音声はmacOSの`say`（Kyoko）で作成。
 - 現行のClaude CLIには`--permission-mode default`がない。Python版のClaudeアダプターは、このままでは動かなかった。
 
 ## Go版の検証記録（2026-10-03）

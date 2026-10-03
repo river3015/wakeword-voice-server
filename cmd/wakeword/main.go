@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -105,34 +106,50 @@ func serve(ctx context.Context, args []string) error {
 func once(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("once", flag.ContinueOnError)
 	sourceWAV := flags.String("source-wav", "", "マイクの代わりに使う、呼びかけを含むWAV")
-	requestWAV := flags.String("request-wav", "", "呼びかけなしの日本語依頼WAV")
+	var requestWAVs stringList
+	flags.Var(&requestWAVs, "request-wav", "呼びかけなしの日本語依頼WAV。複数指定すると同じ会話で順に依頼する")
 	listen := flags.Duration("listen", 30*time.Second, "呼びかけを待つ上限")
 	cfg, err := loadConfig(flags, args)
 	if err != nil {
 		return err
 	}
-	if *sourceWAV != "" && *requestWAV != "" {
+	if *sourceWAV != "" && len(requestWAVs) > 0 {
 		return errors.New("--source-wav と --request-wav は同時に指定できません")
 	}
-	a, ctx, err := start(ctx, cfg, *sourceWAV == "" && *requestWAV == "")
+	a, ctx, err := start(ctx, cfg, *sourceWAV == "" && len(requestWAVs) == 0)
 	if err != nil {
 		return err
 	}
 	defer a.close()
-	var listener usecase.Listener
+	var listeners []usecase.Listener
 	switch {
-	case *requestWAV != "":
-		listener = audio.RequestWAV{Path: *requestWAV}
+	case len(requestWAVs) > 0:
+		for _, path := range requestWAVs {
+			listeners = append(listeners, audio.RequestWAV{Path: path})
+		}
 	case *sourceWAV != "":
-		listener = a.captureListener(audio.WAVFile{Path: *sourceWAV}, 0)
+		listeners = append(listeners, a.captureListener(audio.WAVFile{Path: *sourceWAV}, 0))
 	default:
-		listener = a.microphoneListener(*listen)
+		listeners = append(listeners, a.microphoneListener(*listen))
 	}
-	result, err := a.runner(listener).Run(ctx)
-	if err != nil {
-		return err
+	// 同じ app.conversation を使うので、2件目以降は前の依頼と返答を履歴として渡す
+	for _, listener := range listeners {
+		result, err := a.runner(listener).Run(ctx)
+		if err != nil {
+			return err
+		}
+		printResult(result)
 	}
-	printResult(result)
+	return nil
+}
+
+// stringList は繰り返し指定できるフラグ。
+type stringList []string
+
+func (l *stringList) String() string { return strings.Join(*l, ",") }
+
+func (l *stringList) Set(v string) error {
+	*l = append(*l, v)
 	return nil
 }
 

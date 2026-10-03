@@ -39,4 +39,4 @@
 
 2026-10-03 フェーズ6：Go版へ移行し、Python実装を削除した。ONNX推論はPython版とフレームごとに一致した。録音済みWAVからの一往復と内蔵マイクの待ち受けを確認。応答時間（録音完了から再生開始まで）は、Python版の約11.3秒に対し7.5〜9.4秒。[技術構成](technology-stack.md)と[応答時間](latency.md)を参照。
 
-2026-10-04 Claude連携：Codexの利用上限に達したため、Claude Code CLIを`provider = "claude"`で使えるようにした。逐次受信により、短い返答の応答時間は約4秒。[一往復](one-turn.md)と[応答時間](latency.md)を参照。
+2026-10-04 Claude連携：Codexの利用上限に達したため、Claude Code CLIを`provider = "claude"`で使えるようにした。逐次受信により、短い返答の応答時間は約4秒。`once`の`--request-wav`を複数指定できるようにし、Go版の実Claudeで追加依頼の履歴引き継ぎと会話終了を確認した。[一往復](one-turn.md)と[応答時間](latency.md)を参照。
