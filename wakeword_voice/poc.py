@@ -55,12 +55,16 @@ def detect_wake(wav: Path, model: Path, threshold: float) -> dict:
     if not model.is_file() or model.suffix != ".onnx":
         raise PocError("openWakeWordのONNXモデルを指定してください")
     try:
+        import onnxruntime as ort
+        ort.disable_telemetry_events()
         import numpy as np
         from openwakeword.model import Model
     except ImportError:
         raise PocError("wake用の依存パッケージがありません。PoC手順のセットアップを実行してください") from None
     try:
-        detector = Model(wakeword_models=[str(model.resolve())], inference_framework="onnx")
+        detector = Model(wakeword_models=[str(model.resolve())], inference_framework="onnx",
+                         melspec_model_path=str(model.parent / "melspectrogram.onnx"),
+                         embedding_model_path=str(model.parent / "embedding_model.onnx"))
         peak = 0.0
         triggered_at = None
         with wave.open(str(wav), "rb") as source:

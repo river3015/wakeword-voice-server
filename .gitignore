@@ -3,3 +3,6 @@ __pycache__/
 *.py[cod]
 .models/
 .recordings/
+build/
+*.egg-info/
+.vendor/

@@ -8,11 +8,11 @@
 
 | 役割 | 想定技術 | 状態 |
 | --- | --- | --- |
-| 制御・状態管理 | Python 3.12、uv | PoCコードを作成。Python 3.12環境の構築は未完了 |
+| 制御・状態管理 | Python 3.12、uv | Python 3.12.13で環境構築・テスト済み |
 | マイク入力 | sounddevice／PortAudio | 未導入。macOSのマイク許可も実機確認が必要 |
-| ウェイクワード | openWakeWord、ONNX Runtime | 録音済みWAV向けアダプター作成。実モデルでは未検証 |
+| ウェイクワード | openWakeWord、ONNX Runtime | 公式Hey Mycroftテスト音声で実推論確認済み |
 | 発話区間検出 | Silero VAD | 未実装 |
-| 日本語文字起こし | whisper.cpp、公式Whisper多言語モデル | CLIアダプター作成。バイナリ・モデルは未導入 |
+| 日本語文字起こし | whisper.cpp、公式Whisper多言語モデル | ビルド・baseモデルで日本語合成音声を認識済み |
 | AIへの依頼 | 公式Codex CLI、後からClaude Code | 未接続。現環境でCodex実行ファイルのみ確認 |
 | 日本語読み上げ | VOICEVOX | 未導入。音声選択とクレジット対応が必要 |
 | 常駐 | 当初はターミナル起動。後からlaunchd | 未実装 |
@@ -51,7 +51,7 @@ uv pip install --python .venv/bin/python '.[wake]'
 .venv/bin/python -m wakeword_voice detect-wake /absolute/path/wake.wav --model /absolute/path/hey_jarvis.onnx
 ```
 
-インストールと実行は未検証。openWakeWord 0.6.0をPoCの検証対象とし、現Mac上でPython 3.12を対象に`uv pip compile pyproject.toml --extra wake --python-version 3.12`を実行して18パッケージの依存解決に成功した。ONNX Runtimeが選ばれ、TFLite Runtimeは解決結果に含まれなかった。これはモデル互換性や実推論の成功を示すものではない。
+以下はフェーズ1時点の調査記録。現在の導入・実行結果は末尾のフェーズ2記録を参照。openWakeWord 0.6.0をPoCの検証対象とし、現Mac上でPython 3.12を対象に`uv pip compile pyproject.toml --extra wake --python-version 3.12`を実行して18パッケージの依存解決に成功した。ONNX Runtimeが選ばれ、TFLite Runtimeは解決結果に含まれなかった。これは依存解決単独ではモデル互換性や実推論の成功を示さない。その後の確認は末尾のフェーズ2記録を参照。
 
 openWakeWordは指定したキーワードモデルだけでなく、共有の特徴抽出・メルスペクトログラムモデルも必要。上流の[モデル準備手順](https://github.com/dscripka/openWakeWord)に従って配置する。PoC側ではモデルを自動ダウンロードしない。
 
@@ -71,5 +71,29 @@ python3 -m wakeword_voice transcribe /absolute/path/request.wav --model /absolut
 - 標準ライブラリによる5件のテストが通過。WAV入力、不適切なサンプルレート、日本語指定と結果取得、一時結果削除、タイムアウト、失敗時の外部ログ非表示を検証。
 - CLIヘルプと不正ファイル時のエラー処理を確認。
 - PyPIのメタデータ取得による依存解決に成功。パッケージのインストールは行っていない。
-- whisper-cliの代わりにテストダブルを使用。実音声認識やウェイクワード検出の成功を示すものではない。
-- 残る作業：Python 3.12の環境構築、依存・モデルの取得とライセンス確認、録音済みWAVでの実推論。その後マイクとVADを接続する。
+- 単体テストではwhisper-cliの代わりにテストダブルを使用。実モデルでの別途検証は末尾に記載。
+- フェーズ1時点では環境構築と実推論が残っていた。現在はマイクとVADの接続へ進む。
+
+## フェーズ2の実機確認と再現手順
+
+2026-10-03、Apple Silicon上で実モデル推論を確認した。モデルはGitには含めず、`python3 scripts/download-models.py`で取得する。取得後にSHA-256を確認し、不一致は採用しない。ハッシュは今回の取得物を固定するための値で、第三者監査の証明ではない。
+
+```sh
+uv venv --python 3.12 --managed-python .venv
+uv pip install --python .venv/bin/python '.[wake]'
+python3 scripts/download-models.py
+git clone https://github.com/ggml-org/whisper.cpp.git .vendor/whisper.cpp
+git -C .vendor/whisper.cpp checkout 60c0be6ac8fa71b1a2ae2dd938a31a34a508e774
+cmake -S .vendor/whisper.cpp -B .vendor/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF
+cmake --build .vendor/whisper.cpp/build --config Release -j 4
+```
+
+openWakeWordの共有ONNXモデルはキーワードモデルと同じディレクトリに置く。パッケージ内部へコピーする必要はない。
+
+陽性確認は上流openWakeWordのコミット`368c03716d1e92591906a84949bc477f3a834455`にある`tests/data/hey_mycroft_test.wav`を使用し、スコア1.0、先頭0.64秒のフレームで検出した。Hey Jarvisの合成音声は検出されなかった。実際に採用する呼びかけは、人の声で比較して決める。
+
+日本語の接続確認ではmacOSのKyokoで「こんにちは。日本語で短く返事をしてください。」をファイル合成し、ffmpegで16kHz／16bit／モノラルに変換した。baseモデルの出力は「こんにちは、日本語で短く返事をしてください。」だった。macOS音声合成はこの検証用で、製品の読み上げをVOICEVOXから変更したわけではない。
+
+単体テスト5件はPython 3.12でも通過。モデルダウンロードスクリプトは既存5ファイルのハッシュ照合を確認。ダウンロード経路は今回curl／上流スクリプトで実行したため、新しいスクリプトの初回取得は未検証。マイク録音、AIの呼び出し、VOICEVOXは未実施。
+
+Hey Mycroftモデルは3秒の無音WAVでは未検出、最大スコア0.0だった。
