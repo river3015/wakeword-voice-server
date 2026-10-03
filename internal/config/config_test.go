@@ -60,3 +60,17 @@ func TestOtherSpeakerRequiresCredit(t *testing.T) {
 		t.Error("危険なsandboxを受け付けた")
 	}
 }
+
+func TestProvider(t *testing.T) {
+	c, err := Load(write(t, `provider = "claude"`))
+	if err != nil || c.Provider != "claude" || c.AIExecutable != "claude" {
+		t.Fatalf("config = %+v, err = %v", c, err)
+	}
+	c, err = Load(write(t, ""))
+	if err != nil || c.Provider != "codex" || c.AIExecutable != "codex" {
+		t.Errorf("既定の連携先 = %q, %q", c.Provider, c.AIExecutable)
+	}
+	if _, err := Load(write(t, `provider = "gemini"`)); err == nil {
+		t.Error("未対応の連携先を受け付けた")
+	}
+}

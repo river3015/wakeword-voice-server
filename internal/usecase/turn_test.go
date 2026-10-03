@@ -211,3 +211,30 @@ func TestLongReplyIsTruncatedButRemembered(t *testing.T) {
 		t.Errorf("reply characters = %d", result.ReplyCharacter)
 	}
 }
+
+func TestMarkdownIsNotSpoken(t *testing.T) {
+	cases := map[string]string{
+		"## 日本の四季":          "日本の四季",
+		"- **春**は桜です。":      "春は桜です。",
+		"1. `go build`します。": "go buildします。",
+		"---":               "",
+		"普通の文です。":           "普通の文です。",
+	}
+	for in, want := range cases {
+		if got := speakable(in); got != want {
+			t.Errorf("speakable(%q) = %q, want %q", in, got, want)
+		}
+	}
+	responder := &stubResponder{chunks: []string{"## 見出し\n", "---\n", "- 一つ目。"}}
+	runner, player, _ := newRunner(t, "質問", responder)
+	result, err := runner.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(player.spoken, []string{"見出し", "一つ目。"}) {
+		t.Errorf("spoken = %q", player.spoken)
+	}
+	if result.ReplyCharacter != len([]rune("## 見出し\n---\n- 一つ目。")) {
+		t.Errorf("履歴用の返答が加工されている: %d", result.ReplyCharacter)
+	}
+}

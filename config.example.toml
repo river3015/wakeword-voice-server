@@ -1,13 +1,14 @@
 # 自宅・非商用向け。config.local.tomlにコピーして使う（Git対象外）。
 # パスはこの設定ファイルの場所を基準に解決する。省略した項目は既定値になる。
 
-# AI：公式Codex CLI。本人のログインを使う
-ai_executable = "codex" # PATHにない場合はフルパス
+# AI：公式CLIを本人のログインで使う。providerで切り替える
+provider = "codex" # codex / claude
+ai_executable = "codex" # codexなら"codex"、claudeなら"~/.local/bin/claude"など。LaunchAgentではフルパスにする
 workdir = "."
-sandbox = "read-only" # workspace-writeも可。承認要求は自動許可しない
+sandbox = "read-only" # codexはworkspace-writeも可。claudeはread-onlyのみ。承認要求は自動許可しない
 ai_timeout = 180
-reasoning_effort = "low" # minimal / low / medium / high。空ならCodexの既定。低いほど速い
-# model = "" # 空ならCodexの既定モデル
+reasoning_effort = "low" # codex: minimal/low/medium/high、claude: low/medium/high/xhigh/max。空なら既定。低いほど速い
+# model = "" # 空ならCLIの既定モデル。claudeでは"sonnet"などの別名も使える
 
 # 検出：ONNX Runtimeと openWakeWord・Silero VAD のモデル
 onnxruntime_library = ".vendor/onnxruntime/onnxruntime-osx-arm64-1.29.0/lib/libonnxruntime.1.29.0.dylib"

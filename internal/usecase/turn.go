@@ -3,12 +3,16 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/river3015/wakeword-voice-server/internal/domain"
 )
+
+// VoiceInstruction は連携先に関係なく依頼の前に付ける、音声で返すための指示。
+const VoiceInstruction = "日本語で答えてください。音声で読み上げるため結論を先に短く述べ、見出し・箇条書き・表などの記号を使わず話し言葉の文章で答えてください。コード全文や秘密値は返答に含めないでください。\n"
 
 const (
 	// MaxSpokenCharacters を超える返答は読み上げを打ち切る。履歴には全文を残す
@@ -88,7 +92,7 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 	}
 
 	r.notify(StateProcessing)
-	reply, err := r.respondAndSpeak(ctx, r.Conversation.Prompt(text), start, &timings)
+	reply, err := r.respondAndSpeak(ctx, VoiceInstruction+r.Conversation.Prompt(text), start, &timings)
 	if err != nil {
 		return Result{}, err
 	}
@@ -157,6 +161,9 @@ func (r *TurnRunner) receive(ctx context.Context, prompt string, reply *strings.
 	pending, spoken, truncated := "", 0, false
 	emit := func(sentences []string) bool {
 		for _, s := range sentences {
+			if s = speakable(s); s == "" {
+				continue
+			}
 			if truncated {
 				return true
 			}
@@ -217,6 +224,22 @@ func send[T any](ctx context.Context, ch chan<- T, v T) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+var (
+	markdownLine   = regexp.MustCompile(`^\s*(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)`)
+	markdownInline = strings.NewReplacer("**", "", "__", "", "`", "", "|", " ")
+)
+
+// speakable は読み上げで記号が読まれないよう、Markdown の見出し・箇条書き・強調などを外す。
+// 履歴には元の返答を残す。
+func speakable(sentence string) string {
+	sentence = markdownLine.ReplaceAllString(sentence, "")
+	sentence = markdownInline.Replace(sentence)
+	if strings.Trim(sentence, " \t-=*_#。、") == "" {
+		return "" // 区切り線や記号だけの行
+	}
+	return strings.TrimSpace(sentence)
 }
 
 // splitSentences は文末記号までを完成した文として切り出し、残りを返す。

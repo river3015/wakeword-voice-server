@@ -2,7 +2,7 @@
 
 ## 利用前提
 
-自宅で本人が使う非商用のツール。macOS（Apple Silicon）で常駐させる。英語のウェイクワードで起動し、依頼・文字起こし・返答・読み上げは日本語にする。音声処理はOSSを使い、ローカルで完結させる。AI処理は公式Codex CLIを使う。
+自宅で本人が使う非商用のツール。macOS（Apple Silicon）で常駐させる。英語のウェイクワードで起動し、依頼・文字起こし・返答・読み上げは日本語にする。音声処理はOSSを使い、ローカルで完結させる。AI処理は公式Codex CLIまたはClaude Code CLIを使い、設定で切り替える。
 
 ## スタック
 
@@ -15,7 +15,7 @@
 | ウェイクワード | openWakeWordのONNXモデル＋onnxruntime_go v1.36.0／ONNX Runtime 1.29.0 | 前処理をGoで再実装。Python版とフレームごとのスコアが一致 |
 | 発話区間検出 | Silero VAD（openWakeWord配布のv4形式） | 同上 |
 | 日本語文字起こし | whisper.cppのwhisper-serverを常駐、公式Whisper多言語モデル | Metal使用で3.7秒の依頼を約0.17秒で認識 |
-| AIへの依頼 | 公式Codex CLI（`codex exec`） | 実応答を確認 |
+| AIへの依頼 | 公式Codex CLI（`codex exec`）、Claude Code CLI（`claude -p`、逐次受信） | どちらも実応答を確認 |
 | 日本語読み上げ | VOICEVOX ENGINE 0.25.2 | 文ごとに合成し、再生と並行して次の文を合成 |
 | 常駐 | `wakeword serve`。LaunchAgent用plistを生成可能 | ターミナル起動を確認。LaunchAgentは未登録 |
 
@@ -34,6 +34,7 @@ internal/adapter/
   onnx/                openWakeWord、Silero VAD
   whisper/             whisper-serverのクライアント
   codex/               Codex CLIの実行
+  claude/              Claude Code CLIの実行と逐次受信
   voicevox/            VOICEVOXのクライアント
   localhttp/           ループバック限定のHTTPクライアント
   process/             子プロセスと重複起動防止のロック
@@ -41,11 +42,11 @@ internal/adapter/
 internal/config/       TOML設定
 ```
 
-返答は受信・合成・再生の3段をgoroutineで並行に流す。Codex CLIは完成した返答をまとめて返すが、文ごとに合成して最初の文から再生するので、長い返答でも最初の声が早く出る。
+返答は受信・合成・再生の3段をgoroutineで並行に流す。Claude CLIは返答を逐次受け取り、文ができた順に合成する。Codex CLIは完成した返答をまとめて返すが、文ごとに合成して最初の文から再生するので、長い返答でも最初の声が早く出る。
 
 ## 導入手順
 
-必要なもの：Go 1.25以上、Xcode Command Line Tools（cgo用）、CMake、7z、Codex CLIへのログイン。
+必要なもの：Go 1.25以上、Xcode Command Line Tools（cgo用）、CMake、7z、Codex CLIまたはClaude Code CLIへのログイン。
 
 ```sh
 python3 scripts/download-models.py        # openWakeWord・Silero VAD・Whisperのモデル（SHA-256照合）

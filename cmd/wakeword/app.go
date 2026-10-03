@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/river3015/wakeword-voice-server/internal/adapter/audio"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/claude"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/codex"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/onnx"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/process"
@@ -29,7 +30,7 @@ type app struct {
 	detector     *onnx.Detector
 	whisper      *whisper.Client
 	voicevox     *voicevox.Client
-	codex        *codex.CLI
+	responder    responder
 	conversation *domain.Conversation
 	children     []*process.Child
 	release      func()
@@ -52,10 +53,8 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 	}
 	a.release = release
 
-	a.codex = &codex.CLI{Executable: cfg.Executable(cfg.AIExecutable), Workdir: cfg.Path(cfg.Workdir),
-		Sandbox: cfg.Sandbox, Timeout: config.Seconds(cfg.AITimeout), Model: cfg.Model,
-		ReasoningEffort: cfg.ReasoningEffort}
-	if err := a.codex.Validate(); err != nil {
+	a.responder = newResponder(cfg)
+	if err := a.responder.Validate(); err != nil {
 		return nil, nil, err
 	}
 	if a.whisper, err = whisper.New(cfg.WhisperURL, config.Seconds(cfg.STTTimeout)); err != nil {
@@ -129,8 +128,24 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 		}()
 	}
 	ok = true
-	slog.Info("ready", "voice", cfg.VoicevoxCredit)
+	slog.Info("ready", "provider", cfg.Provider, "voice", cfg.VoicevoxCredit)
 	return a, ctx, nil
+}
+
+// responder は設定で選んだ AI CLI。どちらも usecase.Responder を満たす。
+type responder interface {
+	usecase.Responder
+	Validate() error
+}
+
+func newResponder(cfg *config.Config) responder {
+	executable, workdir, timeout := cfg.Executable(cfg.AIExecutable), cfg.Path(cfg.Workdir), config.Seconds(cfg.AITimeout)
+	if cfg.Provider == "claude" {
+		return &claude.CLI{Executable: executable, Workdir: workdir, Sandbox: cfg.Sandbox, Timeout: timeout,
+			Model: cfg.Model, Effort: cfg.ReasoningEffort}
+	}
+	return &codex.CLI{Executable: executable, Workdir: workdir, Sandbox: cfg.Sandbox, Timeout: timeout,
+		Model: cfg.Model, ReasoningEffort: cfg.ReasoningEffort}
 }
 
 func alreadyReady(ctx context.Context, ready func(context.Context) error) bool {
@@ -199,7 +214,7 @@ func (a *app) microphoneListener(maxWait time.Duration) *usecase.CaptureListener
 }
 
 func (a *app) runner(listener usecase.Listener) *usecase.TurnRunner {
-	return &usecase.TurnRunner{Listener: listener, Transcriber: a.whisper, Responder: a.codex,
+	return &usecase.TurnRunner{Listener: listener, Transcriber: a.whisper, Responder: a.responder,
 		Synthesizer: a.voicevox, Player: a.speaker(), Conversation: a.conversation, OnState: logState}
 }
 

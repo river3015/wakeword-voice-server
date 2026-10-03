@@ -21,7 +21,8 @@ type Conversation struct {
 }
 
 type Config struct {
-	// AI（Codex CLI）
+	// AI：codex（Codex CLI）または claude（Claude Code CLI）
+	Provider        string  `toml:"provider"`
 	AIExecutable    string  `toml:"ai_executable"`
 	Workdir         string  `toml:"workdir"`
 	Sandbox         string  `toml:"sandbox"`
@@ -62,7 +63,7 @@ type Config struct {
 
 func defaults() Config {
 	return Config{
-		AIExecutable: "codex", Workdir: ".", Sandbox: "read-only", AITimeout: 180,
+		Provider: "codex", Workdir: ".", Sandbox: "read-only", AITimeout: 180,
 		ONNXRuntime:  ".vendor/onnxruntime/onnxruntime-osx-arm64-1.29.0/lib/libonnxruntime.1.29.0.dylib",
 		WakeModel:    ".models/openwakeword/hey_mycroft_v0.1.onnx",
 		VADModel:     ".models/openwakeword/silero_vad.onnx",
@@ -77,7 +78,6 @@ func defaults() Config {
 
 // legacy は Python 版だけにあった項目。移行方法を示す
 var legacy = map[string]string{
-	"provider":    "Go版はCodexのみ対応です。削除してください",
 	"whisper_cli": "whisper_server（whisper-serverのパス）に置き換えてください",
 	"device":      "input_device（デバイス名の一部）に置き換えてください。一覧は wakeword devices で確認できます",
 }
@@ -104,6 +104,9 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	c.base = filepath.Dir(absolute)
+	if c.AIExecutable == "" {
+		c.AIExecutable = c.Provider // PATH から codex／claude を探す
+	}
 	if c.Speaker == 0 && !meta.IsDefined("voicevox_credit") {
 		c.VoicevoxCredit = "VOICEVOX:四国めたん"
 	} else if !meta.IsDefined("voicevox_credit") {
@@ -118,6 +121,9 @@ func (c *Config) validate() error {
 	}
 	if strings.TrimSpace(c.VoicevoxCredit) == "" {
 		return errors.New("選択音声のvoicevox_creditを指定してください")
+	}
+	if !slices.Contains([]string{"codex", "claude"}, c.Provider) {
+		return errors.New("providerはcodexかclaudeにしてください")
 	}
 	if !slices.Contains([]string{"read-only", "workspace-write"}, c.Sandbox) {
 		return errors.New("sandboxはread-onlyかworkspace-writeにしてください")

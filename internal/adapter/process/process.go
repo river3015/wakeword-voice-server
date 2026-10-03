@@ -98,3 +98,22 @@ func Lock(path string) (func(), error) {
 	}
 	return func() { file.Close() }, nil
 }
+
+// Command は AI CLI のように依頼ごとに実行するコマンドを作る。ctx が取り消されたら
+// プロセスグループへ SIGTERM を送り、3秒で終わらなければ強制終了する。
+// 標準出力・エラーは呼び出し側で指定しない限り捨てる。
+func Command(ctx context.Context, executable string, args []string, dir string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, executable, args...)
+	cmd.Dir = dir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
+	cmd.WaitDelay = 3 * time.Second
+	return cmd
+}
+
+// KillGroup は終了後に取り残された孫プロセスを片付ける。
+func KillGroup(cmd *exec.Cmd) {
+	if cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+}

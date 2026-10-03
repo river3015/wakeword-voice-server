@@ -8,15 +8,13 @@ import (
 	"fmt"
 	"iter"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
-)
 
-const instruction = "日本語で答えてください。音声で読み上げるため結論を先に短く述べ、コード全文や秘密値は返答に含めないでください。\n"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/process"
+)
 
 type CLI struct {
 	Executable string
@@ -79,18 +77,11 @@ func (c *CLI) ask(parent context.Context, prompt string) (string, error) {
 
 	ctx, cancel := context.WithTimeout(parent, c.Timeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, c.Executable, c.args(output)...)
-	command.Dir = c.Workdir
-	command.Stdin = strings.NewReader(instruction + prompt)
+	command := process.Command(ctx, c.Executable, c.args(output), c.Workdir)
+	command.Stdin = strings.NewReader(prompt)
 	// 標準出力・エラーには依頼内容が含まれ得るので保存しない（nil は /dev/null）
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	// 取り消し時は子プロセスのグループごと止め、3秒で終わらなければ強制終了する
-	command.Cancel = func() error { return syscall.Kill(-command.Process.Pid, syscall.SIGTERM) }
-	command.WaitDelay = 3 * time.Second
 	err = command.Run()
-	if command.Process != nil {
-		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL) // 取り残された孫プロセスを片付ける
-	}
+	process.KillGroup(command)
 	if ctx.Err() != nil {
 		if parent.Err() != nil {
 			return "", parent.Err()
