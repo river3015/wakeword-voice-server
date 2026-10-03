@@ -22,6 +22,7 @@ class CaptureSettings:
     start_timeout: float = 5
     max_seconds: float = 30
     min_speech_seconds: float = 0.24
+    settle_seconds: float = 0.32
 
     def __post_init__(self):
         if not (0 < self.wake_threshold <= 1 and 0 < self.speech_threshold <= 1):
@@ -31,6 +32,8 @@ class CaptureSettings:
             raise PocError("録音時間の設定は0より大きく300秒以下にしてください")
         if self.min_speech_seconds > self.max_seconds:
             raise PocError("最小発話時間は録音上限以下にしてください")
+        if not 0 <= self.settle_seconds <= 2:
+            raise PocError("受付後の抑制時間は0〜2秒にしてください")
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,7 @@ class Recorder:
         self.speech = 0.0
         self.silence = 0.0
         self.started = False
+        self.settle = self.settings.settle_seconds
 
     def feed(self, pcm: bytes, wake_score: float, speech_score: float):
         if len(pcm) != FRAME_BYTES:
@@ -60,6 +64,9 @@ class Recorder:
         if self.state == "waiting":
             if wake_score >= self.settings.wake_threshold:
                 self.state = "recording"
+            return None
+        if self.settle > 1e-9:
+            self.settle -= FRAME_SECONDS
             return None
         self.elapsed += FRAME_SECONDS
         speaking = speech_score >= self.settings.speech_threshold
@@ -131,7 +138,7 @@ def microphone_frames(device=None, max_seconds=None):
     queue = Queue(maxsize=25)
 
     def callback(data, frames, timing, status):
-        payload = None if status or frames != SAMPLES else bytes(data)
+        payload = None if status or frames != SAMPLES else (time.monotonic(), bytes(data))
         try:
             queue.put_nowait(payload)
         except Full:
@@ -153,7 +160,10 @@ def microphone_frames(device=None, max_seconds=None):
                     raise PocError("マイク入力が途切れました") from None
                 if frame is None:
                     raise PocError("マイク入力の欠落を検出しました")
-                yield frame
+                received, pcm = frame
+                if time.monotonic() - received > 1:
+                    raise PocError("マイク入力が遅延しました")
+                yield pcm
     except sd.PortAudioError:
         raise PocError("マイクを開けません。デバイスとmacOSのマイク許可を確認してください") from None
 

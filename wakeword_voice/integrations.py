@@ -5,6 +5,10 @@ from pathlib import Path
 import signal
 import subprocess
 import tempfile
+import io
+import math
+import struct
+import wave
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -42,11 +46,17 @@ class CliAI:
                     try:
                         process.communicate(prompt.encode("utf-8"), timeout=self.timeout)
                     except (subprocess.TimeoutExpired, KeyboardInterrupt):
-                        os.killpg(process.pid, signal.SIGTERM)
+                        try:
+                            os.killpg(process.pid, signal.SIGTERM)
+                        except ProcessLookupError:
+                            pass
                         try:
                             process.wait(timeout=3)
                         except subprocess.TimeoutExpired:
-                            os.killpg(process.pid, signal.SIGKILL)
+                            try:
+                                os.killpg(process.pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
                             process.wait()
                         raise
                 if process.returncode:
@@ -65,6 +75,11 @@ class CliAI:
                 raise PocError("AI実行ファイルまたは返答を読み込めません") from None
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.URLError('音声APIのリダイレクトは許可しません')
+
+
 class Voicevox:
     def __init__(self, url="http://127.0.0.1:50021", speaker=0, timeout=60):
         parsed = urllib.parse.urlparse(url)
@@ -73,7 +88,7 @@ class Voicevox:
         if speaker < 0 or not 0 < timeout <= 300:
             raise PocError("VOICEVOX設定が不正です")
         self.url, self.speaker, self.timeout = url.rstrip("/"), speaker, timeout
-        self.http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self.http = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
     def request(self, route, body=None):
         request = urllib.request.Request(self.url + route, data=body if body is not None else b"", method="POST",
@@ -110,3 +125,14 @@ def play_wav(audio: bytes):
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except (subprocess.SubprocessError, OSError):
             raise PocError("音声を再生できません") from None
+
+
+def play_cue():
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(16000)
+        output.writeframes(b''.join(struct.pack('<h', int(3000 * math.sin(2 * math.pi * 880 * i / 16000)))
+                                    for i in range(1600)))
+    play_wav(buffer.getvalue())

@@ -1,12 +1,16 @@
 import argparse
 import json
 import sys
+import signal
 from pathlib import Path
 
 from .poc import PocError, detect_wake, transcribe, validate_wav
 
 
 def main():
+    def terminate(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, terminate)
     parser = argparse.ArgumentParser(description="録音済みWAVで音声処理を検証するPoC")
     commands = parser.add_subparsers(dest="command", required=True)
     check = commands.add_parser("check-wav")
@@ -35,15 +39,24 @@ def main():
     inputs.add_argument("--source-wav", type=Path, help="呼びかけを含むWAV")
     inputs.add_argument("--request-wav", type=Path, help="呼びかけなしの日本語依頼WAV")
     once.add_argument("--listen-seconds", type=float, default=30)
+    serve = commands.add_parser("serve", help="会話履歴を保持して継続待ち受けする")
+    serve.add_argument("--config", type=Path, required=True)
+    serve.add_argument("--listen-seconds", type=float, default=30)
+    serve.add_argument("--max-cycles", type=int, help="検証用の待ち受け回数上限")
     args = parser.parse_args()
     try:
-        if args.command == "once":
+        if args.command in ("once", "serve"):
             from .application import Application
             if not 0 < args.listen_seconds <= 3600:
                 raise PocError("listen-secondsは0より大きく3600秒以下にしてください")
             app = Application(args.config, lambda state: print(json.dumps({"state": state}), file=sys.stderr))
-            print("音声: VOICEVOX:四国めたん（既定音声。変更時は選択音声のクレジットを確認）", file=sys.stderr)
-            result = app.turn(args.source_wav, args.request_wav, args.listen_seconds)
+            print("音声: " + app.credit, file=sys.stderr)
+            if args.command == "serve":
+                app.serve(args.listen_seconds, args.max_cycles,
+                          lambda result: print(json.dumps(result), flush=True))
+                result = {"stopped": True}
+            else:
+                result = app.turn(args.source_wav, args.request_wav, args.listen_seconds)
         elif args.command == "check-wav":
             result = validate_wav(args.wav)
         elif args.command == "detect-wake":

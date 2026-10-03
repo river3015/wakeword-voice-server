@@ -11,8 +11,10 @@ whisper_model = ".models/whisper/ggml-base.bin"
 whisper_cli = ".vendor/whisper.cpp/build/bin/whisper-cli"
 stt_timeout = 120
 gpu = false
+receipt_cue = true
 voicevox_url = "http://127.0.0.1:50021"
 speaker = 0 # VOICEVOX:四国めたん（あまあま）。選択音声の規約を確認する。
+voicevox_credit = "VOICEVOX:四国めたん"
 # device = 0 # マイクのデバイス番号。省略時はOSの既定。
 
 [capture]
@@ -22,3 +24,9 @@ silence_seconds = 1.2
 start_timeout = 5.0
 max_seconds = 30.0
 min_speech_seconds = 0.24
+settle_seconds = 0.32
+
+[conversation]
+ttl = 300 # 最後の成功応答から5分で履歴破棄。追加依頼もウェイクワードで起動する。
+max_turns = 6
+max_characters = 16000

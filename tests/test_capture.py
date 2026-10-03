@@ -8,7 +8,7 @@ FRAME = b'\x01\x00' * (FRAME_BYTES // 2)
 class CaptureTests(unittest.TestCase):
     def make(self, **kwargs):
         return Recorder(CaptureSettings(silence_seconds=0.24, start_timeout=0.4,
-                                        max_seconds=0.8, min_speech_seconds=0.16, **kwargs))
+                                        max_seconds=0.8, min_speech_seconds=0.16, settle_seconds=0, **kwargs))
 
     def test_wake_is_not_part_of_recorded_request(self):
         recorder = self.make()
@@ -52,3 +52,13 @@ class CaptureTests(unittest.TestCase):
             CaptureSettings(max_seconds=0)
         with self.assertRaises(PocError):
             self.make().feed(b'', 0, 0)
+
+    def test_receipt_echo_is_discarded(self):
+        recorder = Recorder(CaptureSettings(settle_seconds=0.16, start_timeout=0.24,
+                                            min_speech_seconds=0.08))
+        recorder.feed(FRAME,1,0)
+        recorder.feed(FRAME,0,1)
+        recorder.feed(FRAME,0,1)
+        for _ in range(3):
+            result=recorder.feed(FRAME,0,0)
+        self.assertFalse(result.pcm)

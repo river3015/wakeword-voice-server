@@ -79,6 +79,6 @@ python3 -m wakeword_voice --help
 python3 -m unittest discover -s tests -v
 ```
 
-マイク入力・発話区間検出を実装しました。[発話収集の手順と検証結果](docs/capture.md)を参照してください。[AI連携と読み上げ](docs/one-turn.md)も実装し、録音済みWAVからCodex・VOICEVOX・スピーカー再生までの一往復を確認しました。人の声とマイクを使った一往復、会話継続、常駐運用は未検証です。
+マイク入力・発話区間検出を実装しました。[発話収集の手順と検証結果](docs/capture.md)を参照してください。[AI連携と読み上げ](docs/one-turn.md)も実装し、録音済みWAVからCodex・VOICEVOX・スピーカー再生までの一往復を確認しました。会話履歴と継続待ち受けも実装し、短時間運転とCodexへの追加依頼を確認しました。[運用手順](docs/operations.md)で起動・停止できます。人の声による一往復と長時間運転は未検証で、[完成監査](docs/completion-audit.md)に残る確認を記載しています。
 
 既定の読み上げ音声：**VOICEVOX:四国めたん**。

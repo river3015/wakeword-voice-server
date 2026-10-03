@@ -51,3 +51,11 @@ class IntegrationTests(unittest.TestCase):
                 CliAI('codex', 'codex', Path(root)).ask(' ')
             with self.assertRaises(PocError):
                 CliAI('codex', 'codex', Path(root), sandbox='danger-full-access')
+
+    def test_actual_process_timeout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            executable=Path(folder)/'slow-cli'
+            executable.write_text('#!/bin/sh\nsleep 10\n')
+            executable.chmod(0o755)
+            with self.assertRaisesRegex(PocError,'タイムアウト'):
+                CliAI('codex',str(executable),Path(folder),timeout=0.1).ask('test request')
