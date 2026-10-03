@@ -29,9 +29,22 @@ def main():
     capture.add_argument("--device", type=int)
     capture.add_argument("--listen-seconds", type=float, default=30)
     capture.add_argument("--save-audio", type=Path, help="明示した場合のみ依頼音声を保存する")
+    once = commands.add_parser("once", help="日本語依頼→AI→VOICEVOXを一往復する")
+    once.add_argument("--config", type=Path, required=True)
+    inputs = once.add_mutually_exclusive_group()
+    inputs.add_argument("--source-wav", type=Path, help="呼びかけを含むWAV")
+    inputs.add_argument("--request-wav", type=Path, help="呼びかけなしの日本語依頼WAV")
+    once.add_argument("--listen-seconds", type=float, default=30)
     args = parser.parse_args()
     try:
-        if args.command == "check-wav":
+        if args.command == "once":
+            from .application import Application
+            if not 0 < args.listen_seconds <= 3600:
+                raise PocError("listen-secondsは0より大きく3600秒以下にしてください")
+            app = Application(args.config, lambda state: print(json.dumps({"state": state}), file=sys.stderr))
+            print("音声: VOICEVOX:四国めたん（既定音声。変更時は選択音声のクレジットを確認）", file=sys.stderr)
+            result = app.turn(args.source_wav, args.request_wav, args.listen_seconds)
+        elif args.command == "check-wav":
             result = validate_wav(args.wav)
         elif args.command == "detect-wake":
             result = detect_wake(args.wav, args.model, args.threshold)

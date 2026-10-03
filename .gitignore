@@ -6,3 +6,5 @@ __pycache__/
 build/
 *.egg-info/
 .vendor/
+config.local.toml
+:memory:.ses

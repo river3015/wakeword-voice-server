@@ -1,0 +1,24 @@
+# 自宅・非商用向け。コピー先をconfig.local.tomlにするとGit対象外。
+# パスはこの設定ファイルの場所を基準に解決する。
+provider = "codex" # codex / claude
+ai_executable = "codex"
+workdir = "."
+sandbox = "read-only" # Codexのみworkspace-writeも可。承認要求は自動許可しない。
+ai_timeout = 180
+wake_model = ".models/openwakeword/hey_mycroft_v0.1.onnx"
+vad_model = ".models/openwakeword/silero_vad.onnx"
+whisper_model = ".models/whisper/ggml-base.bin"
+whisper_cli = ".vendor/whisper.cpp/build/bin/whisper-cli"
+stt_timeout = 120
+gpu = false
+voicevox_url = "http://127.0.0.1:50021"
+speaker = 0 # VOICEVOX:四国めたん（あまあま）。選択音声の規約を確認する。
+# device = 0 # マイクのデバイス番号。省略時はOSの既定。
+
+[capture]
+wake_threshold = 0.5
+speech_threshold = 0.5
+silence_seconds = 1.2
+start_timeout = 5.0
+max_seconds = 30.0
+min_speech_seconds = 0.24
