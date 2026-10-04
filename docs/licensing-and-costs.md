@@ -52,6 +52,14 @@ VOICEVOX Nemoはクレジット表記を条件に商用・非商用の生成音�
 
 参照：[Picovoice公式FAQ](https://picovoice.ai/docs/faq/general/)、[Porcupine SDK](https://picovoice.ai/docs/porcupine/)。
 
+## 外部データ（スキル）
+
+| サービス | 用途 | 条件 | 費用 |
+| --- | --- | --- | --- |
+| Open-Meteo 予報API | 天気スキル | 非商用（個人のホームオートメーションを含む）は無料・APIキー不要。上限は1分600回、1時間5,000回、1日10,000回。データはCC BY 4.0で出典表示が必要。無料APIではIPアドレスを不正利用対策のため収集し、90日で削除するとしている | 非商用は無料。商用は有料プラン |
+
+出典表示：Weather data by [Open-Meteo.com](https://open-meteo.com/)（CC BY 4.0）。[利用規約](https://open-meteo.com/en/terms)を2026-10-04に確認した。
+
 ## Claude／Codexの条件と料金
 
 音声部分をOSSにしても、Claude／OpenAIのモデルサービスはOSSにはならず、その利用料は残る。Codex CLI本体はApache-2.0だが、接続先モデルの利用が無料になるわけではない。Claude CodeはAnthropicの利用規約に従う。

@@ -28,9 +28,17 @@ type Lists struct {
 	Memo     string `toml:"memo"`
 }
 
+// Weather は設定した1地点の天気予報を読み上げるスキル
+type Weather struct {
+	Enabled   bool    `toml:"enabled"`
+	Latitude  float64 `toml:"latitude"`
+	Longitude float64 `toml:"longitude"`
+}
+
 // Skills は AI を通さずに処理するスキル。既定ではすべて無効
 type Skills struct {
-	Lists Lists `toml:"lists"`
+	Lists   Lists   `toml:"lists"`
+	Weather Weather `toml:"weather"`
 }
 
 type Config struct {

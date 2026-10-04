@@ -16,6 +16,7 @@ import (
 	"github.com/river3015/wakeword-voice-server/internal/adapter/claude"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/codex"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/onnx"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/openmeteo"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/process"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/reminders"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/voicevox"
@@ -23,6 +24,7 @@ import (
 	"github.com/river3015/wakeword-voice-server/internal/config"
 	"github.com/river3015/wakeword-voice-server/internal/domain"
 	"github.com/river3015/wakeword-voice-server/internal/skill/lists"
+	"github.com/river3015/wakeword-voice-server/internal/skill/weather"
 	"github.com/river3015/wakeword-voice-server/internal/usecase"
 )
 
@@ -167,6 +169,13 @@ func newSkills(ctx context.Context, cfg *config.Config) ([]usecase.Skill, error)
 		}
 		skills = append(skills, &lists.Skill{Store: store,
 			Names: map[lists.Kind]string{lists.Shopping: l.Shopping, lists.ToDo: l.ToDo, lists.Memo: l.Memo}})
+	}
+	if w := cfg.Skills.Weather; w.Enabled {
+		forecaster := &openmeteo.Client{Latitude: w.Latitude, Longitude: w.Longitude}
+		if err := forecaster.Validate(); err != nil {
+			return nil, err
+		}
+		skills = append(skills, &weather.Skill{Forecaster: forecaster})
 	}
 	return skills, nil
 }

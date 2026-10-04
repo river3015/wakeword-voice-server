@@ -56,3 +56,9 @@ enabled = false
 shopping = "買い物"
 todo = "ToDo"
 memo = "メモ"
+
+# 天気：Open-Meteoから1地点の予報を取得する（非商用は無料、CC BY 4.0）。座標は小数2桁に丸めて送る
+[skills.weather]
+enabled = false
+latitude = 0.0
+longitude = 0.0
