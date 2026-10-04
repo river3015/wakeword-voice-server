@@ -35,10 +35,16 @@ type Weather struct {
 	Longitude float64 `toml:"longitude"`
 }
 
+// Music はミュージック.appを操作するスキル
+type Music struct {
+	Enabled bool `toml:"enabled"`
+}
+
 // Skills は AI を通さずに処理するスキル。既定ではすべて無効
 type Skills struct {
 	Lists   Lists   `toml:"lists"`
 	Weather Weather `toml:"weather"`
+	Music   Music   `toml:"music"`
 }
 
 type Config struct {

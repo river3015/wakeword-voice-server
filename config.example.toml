@@ -62,3 +62,7 @@ memo = "メモ"
 enabled = false
 latitude = 0.0
 longitude = 0.0
+
+# 音楽：ミュージック.appのライブラリの曲とプレイリストを操作する。初回は自動化の許可を求められる
+[skills.music]
+enabled = false

@@ -15,6 +15,7 @@ import (
 	"github.com/river3015/wakeword-voice-server/internal/adapter/audio"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/claude"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/codex"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/musicapp"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/onnx"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/openmeteo"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/process"
@@ -24,6 +25,7 @@ import (
 	"github.com/river3015/wakeword-voice-server/internal/config"
 	"github.com/river3015/wakeword-voice-server/internal/domain"
 	"github.com/river3015/wakeword-voice-server/internal/skill/lists"
+	"github.com/river3015/wakeword-voice-server/internal/skill/music"
 	"github.com/river3015/wakeword-voice-server/internal/skill/weather"
 	"github.com/river3015/wakeword-voice-server/internal/usecase"
 )
@@ -176,6 +178,13 @@ func newSkills(ctx context.Context, cfg *config.Config) ([]usecase.Skill, error)
 			return nil, err
 		}
 		skills = append(skills, &weather.Skill{Forecaster: forecaster})
+	}
+	if cfg.Skills.Music.Enabled {
+		player := &musicapp.Music{}
+		if err := player.Check(ctx); err != nil {
+			return nil, err
+		}
+		skills = append(skills, &music.Skill{Player: player})
 	}
 	return skills, nil
 }
