@@ -71,9 +71,15 @@ func (s *Skill) Match(text string) (usecase.Invocation, bool) {
 		return nil, false // 設定していない種類は AI へ渡す
 	}
 	if request.Item == "" {
-		return func(ctx context.Context) (string, error) { return s.read(ctx, request.Kind, name) }, true
+		return func(ctx context.Context) (usecase.Outcome, error) {
+			reply, err := s.read(ctx, request.Kind, name)
+			return usecase.Outcome{Reply: reply}, err
+		}, true
 	}
-	return func(ctx context.Context) (string, error) { return s.add(ctx, request.Kind, name, request.Item) }, true
+	return func(ctx context.Context) (usecase.Outcome, error) {
+		reply, err := s.add(ctx, request.Kind, name, request.Item)
+		return usecase.Outcome{Reply: reply}, err
+	}, true
 }
 
 func (s *Skill) add(ctx context.Context, kind Kind, name, item string) (string, error) {

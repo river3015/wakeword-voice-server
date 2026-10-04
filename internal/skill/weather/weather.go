@@ -44,12 +44,13 @@ func (s *Skill) Match(text string) (usecase.Invocation, bool) {
 	if !ok {
 		return nil, false
 	}
-	return func(ctx context.Context) (string, error) {
+	return func(ctx context.Context) (usecase.Outcome, error) {
 		forecast, err := s.Forecaster.Forecast(ctx)
 		if err != nil {
-			return "", err
+			return usecase.Outcome{}, err
 		}
-		return Reply(forecast, day)
+		reply, err := Reply(forecast, day)
+		return usecase.Outcome{Reply: reply}, err
 	}, true
 }
 
@@ -58,7 +59,7 @@ var (
 	weatherRequest = regexp.MustCompile(`^(今日|きょう|明日|あした|あす)?(?:の|は)?天気(?:予報)?` +
 		`(?:は|を)?(?:教えて(?:ください)?|どう|どんな感じ|何)?(?:ですか|かな|でしょう)?$`)
 	// 「今日は傘いる？」「明日傘いるかな」
-	umbrellaRequest = regexp.MustCompile(`^(今日|きょう|明日|あした|あす)?(?:は)?傘(?:は|が)?(?:いる|必要)(?:かな|ですか|でしょうか)?$`)
+	umbrellaRequest = regexp.MustCompile(`^(今日|きょう|明日|あした|あす)?(?:は)?[、,]?\s*(?:傘|かさ|カサ)(?:は|が)?(?:いる|必要)(?:かな|ですか|でしょうか)?$`)
 )
 
 // Parse は依頼が今日（0）か明日（1）の天気かを返す。日の指定がなければ今日。

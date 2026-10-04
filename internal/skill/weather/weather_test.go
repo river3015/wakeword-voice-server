@@ -18,6 +18,7 @@ func TestParse(t *testing.T) {
 		{"あしたの天気どう", 1, true},
 		{"今日は傘いる？", 0, true},
 		{"明日傘必要かな", 1, true},
+		{"あすは、かさいる?", 1, true},
 		// 地点の指定や天気に関する質問は AI へ渡す
 		{"大阪の天気は？", 0, false},
 		{"天気予報の仕組みを教えて", 0, false},
@@ -47,8 +48,8 @@ func TestReply(t *testing.T) {
 		if !ok {
 			t.Fatalf("Match(%q) が一致しない", text)
 		}
-		if got, err := invoke(context.Background()); err != nil || got != want {
-			t.Errorf("%q: got %q, err = %v", text, got, err)
+		if got, err := invoke(context.Background()); err != nil || got.Reply != want {
+			t.Errorf("%q: got %q, err = %v", text, got.Reply, err)
 		}
 	}
 	if _, err := Reply(Forecast{Days: []Day{{}}}, 1); err == nil {

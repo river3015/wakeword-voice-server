@@ -81,7 +81,8 @@ func run(t *testing.T, s *Skill, text string) (string, error) {
 	if !ok {
 		t.Fatalf("Match(%q) が一致しない", text)
 	}
-	return invoke(context.Background())
+	outcome, err := invoke(context.Background())
+	return outcome.Reply, err
 }
 
 func TestAddReadsBackStoredItem(t *testing.T) {

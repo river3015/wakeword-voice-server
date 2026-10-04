@@ -244,6 +244,7 @@ type stubSkill struct {
 	phrase, reply string
 	err           error
 	calls         int
+	after         func(context.Context) error
 }
 
 func (s *stubSkill) Name() string { return "stub" }
@@ -252,7 +253,10 @@ func (s *stubSkill) Match(text string) (Invocation, bool) {
 	if text != s.phrase {
 		return nil, false
 	}
-	return func(context.Context) (string, error) { s.calls++; return s.reply, s.err }, true
+	return func(context.Context) (Outcome, error) {
+		s.calls++
+		return Outcome{Reply: s.reply, AfterSpeech: s.after}, s.err
+	}, true
 }
 
 func TestRunSkillHandlesMatchedPhraseWithoutAI(t *testing.T) {
@@ -298,5 +302,26 @@ func TestRunSkillFailureIsSpokenAndReturned(t *testing.T) {
 	}
 	if runner.Conversation.Turns() != 0 || (*states)[len(*states)-1] != StateWaiting {
 		t.Errorf("turns = %d, states = %v", runner.Conversation.Turns(), *states)
+	}
+}
+
+func TestRunSkillActsAfterSpeaking(t *testing.T) {
+	runner, player, _ := newRunner(t, "音楽をかけて", &stubResponder{})
+	var spokenBefore []string
+	skill := &stubSkill{phrase: "音楽をかけて", reply: "再生します。", after: func(context.Context) error {
+		spokenBefore = slices.Clone(player.spoken)
+		return nil
+	}}
+	runner.Skills = []Skill{skill}
+
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(spokenBefore, []string{"再生します。"}) {
+		t.Errorf("読み上げの前に実行された: %q", spokenBefore)
+	}
+	skill.after = func(context.Context) error { return errors.New("music") }
+	if _, err := runner.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "skill stub") {
+		t.Errorf("err = %v", err)
 	}
 }

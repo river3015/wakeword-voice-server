@@ -96,22 +96,31 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 	}
 
 	r.notify(StateProcessing)
-	name, replies := "", iter.Seq2[string, error](nil)
+	var (
+		name    string
+		replies iter.Seq2[string, error]
+		after   func(context.Context) error
+	)
 	if skill, invoke := r.matchSkill(text); invoke != nil {
 		name = skill.Name()
-		reply, err := invoke(ctx)
+		outcome, err := invoke(ctx)
 		if err != nil {
 			// 失敗も声で知らせる。読み上げの失敗より、スキルの失敗を返す
 			_, _ = r.respondAndSpeak(ctx, fixed(skillFailedNotice), start, &timings)
 			return Result{}, fmt.Errorf("skill %s: %w", name, err)
 		}
-		replies = fixed(reply)
+		replies, after = fixed(outcome.Reply), outcome.AfterSpeech
 	} else {
 		replies = r.Responder.Respond(ctx, VoiceInstruction+r.Conversation.Prompt(text))
 	}
 	reply, err := r.respondAndSpeak(ctx, replies, start, &timings)
 	if err != nil {
 		return Result{}, err
+	}
+	if after != nil {
+		if err := after(ctx); err != nil {
+			return Result{}, fmt.Errorf("skill %s: %w", name, err)
+		}
 	}
 	timings.Total = r.now().Sub(start)
 	// スキルの結果も履歴に残し、続けて AI に「さっき何を追加した？」と聞けるようにする

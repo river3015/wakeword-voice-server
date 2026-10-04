@@ -76,5 +76,12 @@ type SkillVocabulary interface {
 	Vocabulary() []string
 }
 
-// Invocation はスキルの処理。読み上げる返答を返す。
-type Invocation func(ctx context.Context) (reply string, err error)
+// Invocation はスキルの処理。
+type Invocation func(ctx context.Context) (Outcome, error)
+
+// Outcome はスキルの処理結果。
+type Outcome struct {
+	Reply string // 読み上げる返答
+	// AfterSpeech は返答を読み上げた後に行う処理。音楽の再生開始などで、読み上げと音が重ならないようにする
+	AfterSpeech func(ctx context.Context) error
+}
