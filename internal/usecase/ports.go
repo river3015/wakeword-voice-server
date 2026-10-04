@@ -61,3 +61,20 @@ const (
 	StateError        State = "error"
 	StateStopped      State = "stopped"
 )
+
+// Skill は決まった言い回しの依頼を AI を通さずに処理する拡張。TurnRunner.Skills に並べた順に試し、
+// どれにも一致しなければ AI へ渡す。書き込みはスキル側で入力を検証してから行い、AI に権限を渡さない。
+type Skill interface {
+	Name() string
+	// Match は発話がこのスキルの対象なら実行する処理を返す。Match 自体は副作用を持たないこと
+	Match(text string) (Invocation, bool)
+}
+
+// SkillVocabulary は文字起こしに渡す語彙のヒントを持つスキルが、任意で実装する。
+// 短い語（「メモ」など）が別の語に誤認識されるのを減らす。
+type SkillVocabulary interface {
+	Vocabulary() []string
+}
+
+// Invocation はスキルの処理。読み上げる返答を返す。
+type Invocation func(ctx context.Context) (reply string, err error)

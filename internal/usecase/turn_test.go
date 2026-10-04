@@ -238,3 +238,65 @@ func TestMarkdownIsNotSpoken(t *testing.T) {
 		t.Errorf("履歴用の返答が加工されている: %d", result.ReplyCharacter)
 	}
 }
+
+// stubSkill は決まった発話にだけ一致する。
+type stubSkill struct {
+	phrase, reply string
+	err           error
+	calls         int
+}
+
+func (s *stubSkill) Name() string { return "stub" }
+
+func (s *stubSkill) Match(text string) (Invocation, bool) {
+	if text != s.phrase {
+		return nil, false
+	}
+	return func(context.Context) (string, error) { s.calls++; return s.reply, s.err }, true
+}
+
+func TestRunSkillHandlesMatchedPhraseWithoutAI(t *testing.T) {
+	responder := &stubResponder{chunks: []string{"AIの返答。"}}
+	runner, player, _ := newRunner(t, "牛乳を追加", responder)
+	skill := &stubSkill{phrase: "牛乳を追加", reply: "牛乳を追加しました。"}
+	runner.Skills = []Skill{&stubSkill{phrase: "別の言い回し"}, skill}
+
+	result, err := runner.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if responder.calls != 0 || skill.calls != 1 || !slices.Equal(player.spoken, []string{"牛乳を追加しました。"}) {
+		t.Errorf("ai calls = %d, skill calls = %d, spoken = %q", responder.calls, skill.calls, player.spoken)
+	}
+	if !result.Completed || result.Skill != "stub" || runner.Conversation.Turns() != 1 {
+		t.Errorf("result = %+v, turns = %d", result, runner.Conversation.Turns())
+	}
+}
+
+func TestRunUnmatchedPhraseGoesToAI(t *testing.T) {
+	responder := &stubResponder{chunks: []string{"AIの返答。"}}
+	runner, _, _ := newRunner(t, "質問", responder)
+	runner.Skills = []Skill{&stubSkill{phrase: "牛乳を追加"}}
+
+	result, err := runner.Run(context.Background())
+	if err != nil || responder.calls != 1 || result.Skill != "" {
+		t.Errorf("result = %+v, err = %v, ai calls = %d", result, err, responder.calls)
+	}
+}
+
+func TestRunSkillFailureIsSpokenAndReturned(t *testing.T) {
+	responder := &stubResponder{}
+	runner, player, states := newRunner(t, "牛乳を追加", responder)
+	runner.Skills = []Skill{&stubSkill{phrase: "牛乳を追加", err: errors.New("store")}}
+
+	_, err := runner.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "skill stub") {
+		t.Fatalf("err = %v", err)
+	}
+	if !slices.Equal(player.spoken, []string{skillFailedNotice}) || responder.calls != 0 {
+		t.Errorf("spoken = %q, ai calls = %d", player.spoken, responder.calls)
+	}
+	if runner.Conversation.Turns() != 0 || (*states)[len(*states)-1] != StateWaiting {
+		t.Errorf("turns = %d, states = %v", runner.Conversation.Turns(), *states)
+	}
+}

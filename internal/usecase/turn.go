@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"iter"
 	"regexp"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ const (
 	truncatedNotice     = "返答が長いため読み上げを省略しました。"
 	// maxSentenceCharacters 文末記号がないまま長く続く場合は読点などで区切って合成する
 	maxSentenceCharacters = 120
+	skillFailedNotice     = "依頼を処理できませんでした。"
 )
 
 // TurnRunner はポートの中身を知らずに一往復を進める。組み立ては main が行う。
@@ -30,6 +32,7 @@ type TurnRunner struct {
 	Synthesizer  Synthesizer
 	Player       Player
 	Conversation *domain.Conversation
+	Skills       []Skill          // AI より先に試す。nil なら全て AI へ渡す
 	OnState      func(State)      // nil なら通知しない
 	Now          func() time.Time // nil なら time.Now
 }
@@ -45,6 +48,7 @@ type Timings struct {
 type Result struct {
 	Completed      bool
 	Reason         string // 完了しなかった理由。no_speech、end_conversation、stop_server
+	Skill          string // スキルが処理した場合はその名前。AI が返答した場合は空
 	Stop           bool   // サーバーを止める指示だったか
 	ReplyCharacter int
 	Timings        Timings
@@ -92,22 +96,50 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 	}
 
 	r.notify(StateProcessing)
-	reply, err := r.respondAndSpeak(ctx, VoiceInstruction+r.Conversation.Prompt(text), start, &timings)
+	name, replies := "", iter.Seq2[string, error](nil)
+	if skill, invoke := r.matchSkill(text); invoke != nil {
+		name = skill.Name()
+		reply, err := invoke(ctx)
+		if err != nil {
+			// 失敗も声で知らせる。読み上げの失敗より、スキルの失敗を返す
+			_, _ = r.respondAndSpeak(ctx, fixed(skillFailedNotice), start, &timings)
+			return Result{}, fmt.Errorf("skill %s: %w", name, err)
+		}
+		replies = fixed(reply)
+	} else {
+		replies = r.Responder.Respond(ctx, VoiceInstruction+r.Conversation.Prompt(text))
+	}
+	reply, err := r.respondAndSpeak(ctx, replies, start, &timings)
 	if err != nil {
 		return Result{}, err
 	}
 	timings.Total = r.now().Sub(start)
+	// スキルの結果も履歴に残し、続けて AI に「さっき何を追加した？」と聞けるようにする
 	r.Conversation.Remember(text, reply)
-	return Result{Completed: true, ReplyCharacter: len([]rune(reply)), Timings: timings}, nil
+	return Result{Completed: true, Skill: name, ReplyCharacter: len([]rune(reply)), Timings: timings}, nil
+}
+
+func (r *TurnRunner) matchSkill(text string) (Skill, Invocation) {
+	for _, skill := range r.Skills {
+		if invoke, ok := skill.Match(text); ok {
+			return skill, invoke
+		}
+	}
+	return nil, nil
+}
+
+// fixed は決まった返答を AI の返答と同じ形で流す。
+func fixed(reply string) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) { yield(reply, nil) }
 }
 
 // respondAndSpeak は 3 つの段を goroutine で並行に動かす。
 //
-//	受信: Responder → 文に分割 ──sentences──▶ 合成: Synthesizer ──audios──▶ 再生: Player
+//	受信: 返答 → 文に分割 ──sentences──▶ 合成: Synthesizer ──audios──▶ 再生: Player
 //
 // 再生中も受信と次の文の合成が進むので、文と文の間に合成待ちが入りにくい。
 // どこかの段が失敗したら ctx を取り消し、他の段も止める。
-func (r *TurnRunner) respondAndSpeak(parent context.Context, prompt string, start time.Time, timings *Timings) (string, error) {
+func (r *TurnRunner) respondAndSpeak(parent context.Context, replies iter.Seq2[string, error], start time.Time, timings *Timings) (string, error) {
 	ctx, cancel := context.WithCancelCause(parent)
 	defer cancel(nil)
 
@@ -120,7 +152,7 @@ func (r *TurnRunner) respondAndSpeak(parent context.Context, prompt string, star
 	wg.Go(func() { // Go 1.25 の WaitGroup.Go は Add/Done を自動で行う
 		defer close(sentences) // 送り手が close し、受け手の for range を終わらせる
 		received := func() { firstChunk = r.now().Sub(start) }
-		if err := r.receive(ctx, prompt, &reply, sentences, received); err != nil {
+		if err := r.receive(ctx, replies, &reply, sentences, received); err != nil {
 			cancel(err)
 		}
 	})
@@ -156,7 +188,7 @@ func (r *TurnRunner) respondAndSpeak(parent context.Context, prompt string, star
 
 // receive は返答を受け取りながら文に区切って送る。読み上げの上限を超えたら、
 // 省略の案内を送って読み上げだけを打ち切る。履歴用に返答は最後まで受け取る。
-func (r *TurnRunner) receive(ctx context.Context, prompt string, reply *strings.Builder, out chan<- string,
+func (r *TurnRunner) receive(ctx context.Context, replies iter.Seq2[string, error], reply *strings.Builder, out chan<- string,
 	onFirst func()) error {
 	pending, spoken, truncated := "", 0, false
 	emit := func(sentences []string) bool {
@@ -179,7 +211,7 @@ func (r *TurnRunner) receive(ctx context.Context, prompt string, reply *strings.
 		}
 		return true
 	}
-	for chunk, err := range r.Responder.Respond(ctx, prompt) {
+	for chunk, err := range replies {
 		if err != nil {
 			return fmt.Errorf("respond: %w", err)
 		}

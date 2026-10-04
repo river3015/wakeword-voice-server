@@ -156,7 +156,7 @@ func (l *stringList) Set(v string) error {
 func printResult(r usecase.Result) {
 	ms := func(d time.Duration) int64 { return d.Milliseconds() }
 	out, _ := json.Marshal(map[string]any{
-		"completed": r.Completed, "reason": r.Reason, "reply_characters": r.ReplyCharacter,
+		"completed": r.Completed, "reason": r.Reason, "skill": r.Skill, "reply_characters": r.ReplyCharacter,
 		"timings_ms": map[string]int64{"transcribe": ms(r.Timings.Transcribe), "first_chunk": ms(r.Timings.FirstChunk),
 			"first_audio": ms(r.Timings.FirstAudio), "total": ms(r.Timings.Total)},
 	})
