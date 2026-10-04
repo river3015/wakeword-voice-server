@@ -20,6 +20,19 @@ type Conversation struct {
 	MaxCharacters int     `toml:"max_characters"`
 }
 
+// Lists はリマインダーのリストへ追加・読み上げるスキル。各項目は保存先のリスト名
+type Lists struct {
+	Enabled  bool   `toml:"enabled"`
+	Shopping string `toml:"shopping"`
+	ToDo     string `toml:"todo"`
+	Memo     string `toml:"memo"`
+}
+
+// Skills は AI を通さずに処理するスキル。既定ではすべて無効
+type Skills struct {
+	Lists Lists `toml:"lists"`
+}
+
 type Config struct {
 	// AI：codex（Codex CLI）または claude（Claude Code CLI）
 	Provider        string  `toml:"provider"`
@@ -57,6 +70,7 @@ type Config struct {
 
 	Capture      domain.CaptureSettings `toml:"capture"`
 	Conversation Conversation           `toml:"conversation"`
+	Skills       Skills                 `toml:"skills"`
 
 	base string
 }
@@ -73,6 +87,7 @@ func defaults() Config {
 		ReceiptCue: true, PreventSleep: true,
 		Capture:      domain.DefaultCaptureSettings(),
 		Conversation: Conversation{TTL: 300, MaxTurns: 6, MaxCharacters: 16000},
+		Skills:       Skills{Lists: Lists{Shopping: "買い物", ToDo: "ToDo", Memo: "メモ"}},
 	}
 }
 
@@ -138,6 +153,13 @@ func (c *Config) validate() error {
 	if !(1 <= cv.TTL && cv.TTL <= 86400 && 1 <= cv.MaxTurns && cv.MaxTurns <= 20 &&
 		1000 <= cv.MaxCharacters && cv.MaxCharacters <= 20000) {
 		return errors.New("会話履歴の上限設定が不正です")
+	}
+	if l := c.Skills.Lists; l.Enabled {
+		for _, name := range []string{l.Shopping, l.ToDo, l.Memo} {
+			if strings.TrimSpace(name) == "" || len([]rune(name)) > 100 || strings.ContainsAny(name, "\r\n") {
+				return errors.New("skills.listsのリスト名は空でなく100文字以内にしてください")
+			}
+		}
 	}
 	return nil
 }

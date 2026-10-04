@@ -20,6 +20,8 @@ import (
 type Client struct {
 	base string
 	http *http.Client
+	// Prompt は認識させたい語彙のヒント。空なら送らない。スキルの言い回しの誤認識を減らすために使う
+	Prompt string
 }
 
 func New(baseURL string, timeout time.Duration) (*Client, error) {
@@ -43,6 +45,9 @@ func (c *Client) Transcribe(ctx context.Context, pcm []int16) (string, error) {
 		"language": "ja", "response_format": "text", "temperature": "0", "no_timestamps": "true",
 	} {
 		form.WriteField(key, value)
+	}
+	if c.Prompt != "" {
+		form.WriteField("prompt", c.Prompt)
 	}
 	if err := form.Close(); err != nil {
 		return "", err

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,10 +17,12 @@ import (
 	"github.com/river3015/wakeword-voice-server/internal/adapter/codex"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/onnx"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/process"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/reminders"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/voicevox"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/whisper"
 	"github.com/river3015/wakeword-voice-server/internal/config"
 	"github.com/river3015/wakeword-voice-server/internal/domain"
+	"github.com/river3015/wakeword-voice-server/internal/skill/lists"
 	"github.com/river3015/wakeword-voice-server/internal/usecase"
 )
 
@@ -32,6 +35,7 @@ type app struct {
 	voicevox     *voicevox.Client
 	responder    responder
 	conversation *domain.Conversation
+	skills       []usecase.Skill
 	children     []*process.Child
 	release      func()
 	cancel       context.CancelCauseFunc
@@ -67,6 +71,10 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 		cfg.Conversation.MaxTurns, cfg.Conversation.MaxCharacters, nil); err != nil {
 		return nil, nil, err
 	}
+	if a.skills, err = newSkills(parent, cfg); err != nil {
+		return nil, nil, err
+	}
+	a.whisper.Prompt = vocabularyPrompt(a.skills)
 	if a.devices, err = audio.NewDevices(); err != nil {
 		return nil, nil, err
 	}
@@ -148,6 +156,35 @@ func newResponder(cfg *config.Config) responder {
 		Model: cfg.Model, ReasoningEffort: cfg.ReasoningEffort}
 }
 
+// newSkills は設定で有効にしたスキルを、AI より先に試す順で並べる。
+// 新しいスキルはここに追加する。
+func newSkills(ctx context.Context, cfg *config.Config) ([]usecase.Skill, error) {
+	var skills []usecase.Skill
+	if l := cfg.Skills.Lists; l.Enabled {
+		store := &reminders.Reminders{}
+		if err := store.Check(ctx, []string{l.Shopping, l.ToDo, l.Memo}); err != nil {
+			return nil, err
+		}
+		skills = append(skills, &lists.Skill{Store: store,
+			Names: map[lists.Kind]string{lists.Shopping: l.Shopping, lists.ToDo: l.ToDo, lists.Memo: l.Memo}})
+	}
+	return skills, nil
+}
+
+// vocabularyPrompt はスキルの語彙を文字起こしのヒントにまとめる。
+func vocabularyPrompt(skills []usecase.Skill) string {
+	var words []string
+	for _, skill := range skills {
+		if v, ok := skill.(usecase.SkillVocabulary); ok {
+			words = append(words, v.Vocabulary()...)
+		}
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	return strings.Join(words, "、") + "。"
+}
+
 func alreadyReady(ctx context.Context, ready func(context.Context) error) bool {
 	probe, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
@@ -215,7 +252,7 @@ func (a *app) microphoneListener(maxWait time.Duration) *usecase.CaptureListener
 
 func (a *app) runner(listener usecase.Listener) *usecase.TurnRunner {
 	return &usecase.TurnRunner{Listener: listener, Transcriber: a.whisper, Responder: a.responder,
-		Synthesizer: a.voicevox, Player: a.speaker(), Conversation: a.conversation, OnState: logState}
+		Synthesizer: a.voicevox, Player: a.speaker(), Conversation: a.conversation, Skills: a.skills, OnState: logState}
 }
 
 func logState(s usecase.State) { slog.Info("state", "state", string(s)) }

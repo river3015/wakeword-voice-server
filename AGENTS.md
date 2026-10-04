@@ -20,6 +20,7 @@
 | 構成・依存の導入 | `docs/technology-stack.md` |
 | マイク入力・発話収集 | `docs/capture.md` |
 | AI連携・読み上げ | `docs/one-turn.md` |
+| スキル（リストなどAIを通さない処理） | `docs/skills.md` |
 | 常駐運用 | `docs/operations.md` |
 | 応答時間の計測・改善 | `docs/latency.md` |
 | フェーズの進行・完成判定 | `docs/implementation-phases.md`、`docs/completion-audit.md` |

@@ -14,7 +14,7 @@ func TestTranscribeSendsWAVForm(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		file, _, err := r.FormFile("file")
 		if err != nil || r.URL.Path != "/inference" || r.FormValue("language") != "ja" ||
-			r.FormValue("response_format") != "text" {
+			r.FormValue("response_format") != "text" || r.FormValue("prompt") != "買い物リスト、メモ。" {
 			http.Error(w, "bad", http.StatusBadRequest)
 			return
 		}
@@ -31,6 +31,7 @@ func TestTranscribeSendsWAVForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.Prompt = "買い物リスト、メモ。"
 	text, err := client.Transcribe(context.Background(), []int16{1, 2, 3})
 	if err != nil || text != "こんにちは" {
 		t.Errorf("text = %q, err = %v", text, err)

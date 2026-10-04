@@ -80,6 +80,6 @@ bin/wakeword serve --config config.local.toml
 go test ./...
 ```
 
-AIは`config.local.toml`の`provider`でCodexとClaudeを切り替えられます。録音済みWAVからwhisper-server・Codex／Claude・VOICEVOX・スピーカー再生までの一往復と、内蔵マイクでの待ち受けを確認しました。返答は文ごとに合成し、再生と並行して次の文を合成します。[発話収集](docs/capture.md)、[AI連携と読み上げ](docs/one-turn.md)、[運用手順](docs/operations.md)を参照してください。人の声による一往復と長時間運転は未検証で、[完成監査](docs/completion-audit.md)に残る確認を記載しています。
+AIは`config.local.toml`の`provider`でCodexとClaudeを切り替えられます。リストへの追加など決まった言い回しの依頼は、AIを通さずに[スキル](docs/skills.md)で処理します。録音済みWAVからwhisper-server・Codex／Claude・VOICEVOX・スピーカー再生までの一往復と、内蔵マイクでの待ち受けを確認しました。返答は文ごとに合成し、再生と並行して次の文を合成します。[発話収集](docs/capture.md)、[AI連携と読み上げ](docs/one-turn.md)、[運用手順](docs/operations.md)を参照してください。人の声による一往復と長時間運転は未検証で、[完成監査](docs/completion-audit.md)に残る確認を記載しています。
 
 既定の読み上げ音声：**VOICEVOX:四国めたん**。

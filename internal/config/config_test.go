@@ -74,3 +74,17 @@ func TestProvider(t *testing.T) {
 		t.Error("未対応の連携先を受け付けた")
 	}
 }
+
+func TestListsSkill(t *testing.T) {
+	c, err := Load(write(t, ""))
+	if err != nil || c.Skills.Lists.Enabled {
+		t.Fatalf("既定で有効になっている: %+v, %v", c.Skills.Lists, err)
+	}
+	c, err = Load(write(t, "[skills.lists]\nenabled = true\nshopping = \"買い物\"\n"))
+	if err != nil || c.Skills.Lists.Shopping != "買い物" || c.Skills.Lists.ToDo != "ToDo" {
+		t.Errorf("lists = %+v, err = %v", c.Skills.Lists, err)
+	}
+	if _, err := Load(write(t, "[skills.lists]\nenabled = true\nmemo = \"\"\n")); err == nil {
+		t.Error("空のリスト名を受け付けた")
+	}
+}

@@ -48,3 +48,11 @@ settle_seconds = 0.32
 ttl = 300 # 最後の成功応答から5分で履歴破棄
 max_turns = 6
 max_characters = 16000
+
+# スキル：決まった言い回しをAIを通さずに処理する。一致しない発話はAIへ渡す
+# リスト：リマインダー.appのリストへ追加・読み上げる。リストは事前に作成しておく。初回は自動化の許可を求められる
+[skills.lists]
+enabled = false
+shopping = "買い物"
+todo = "ToDo"
+memo = "メモ"
