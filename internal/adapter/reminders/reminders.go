@@ -3,16 +3,14 @@
 package reminders
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/river3015/wakeword-voice-server/internal/adapter/process"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/applescript"
 )
 
 const (
@@ -39,6 +37,11 @@ type Reminders struct {
 	Timeout    time.Duration
 }
 
+func (r *Reminders) run(ctx context.Context, script string, args ...string) (string, error) {
+	runner := applescript.Runner{App: "リマインダー", Executable: r.Executable, Timeout: r.Timeout}
+	return runner.Run(ctx, script, args...)
+}
+
 // Check はリマインダーを操作できるか、必要なリストがあるかを確かめる。
 // 初回はmacOSが自動化の許可を求める。
 func (r *Reminders) Check(ctx context.Context, required []string) error {
@@ -46,7 +49,7 @@ func (r *Reminders) Check(ctx context.Context, required []string) error {
 	if err != nil {
 		return err
 	}
-	existing := lines(out)
+	existing := applescript.Lines(out)
 	var missing []string
 	for _, name := range required {
 		if !slices.Contains(existing, name) && !slices.Contains(missing, name) {
@@ -77,48 +80,5 @@ func (r *Reminders) Items(ctx context.Context, list string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return lines(out), nil
-}
-
-// errorNumber は osascript のエラー出力にある番号。-1743 は自動化が許可されていない。
-var errorNumber = regexp.MustCompile(`\((-?\d+)\)\s*$`)
-
-func (r *Reminders) run(parent context.Context, script string, args ...string) (string, error) {
-	executable, timeout := r.Executable, r.Timeout
-	if executable == "" {
-		executable = "/usr/bin/osascript"
-	}
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(parent, timeout)
-	defer cancel()
-	// -- の後ろは、- で始まる値でも osascript のオプションとして扱われない
-	command := process.Command(ctx, executable, append([]string{"-e", script, "--"}, args...), "")
-	var stdout, stderr bytes.Buffer
-	command.Stdout, command.Stderr = &stdout, &stderr
-	if err := command.Run(); err != nil {
-		if ctx.Err() != nil && parent.Err() == nil {
-			return "", errors.New("リマインダーの操作がタイムアウトしました。自動化の許可を確認してください")
-		}
-		// エラー出力には項目名が含まれ得るので、番号だけを返す
-		if m := errorNumber.FindStringSubmatch(strings.TrimSpace(stderr.String())); m != nil {
-			if m[1] == "-1743" {
-				return "", errors.New("リマインダーの操作が許可されていません。システム設定のオートメーションで許可してください")
-			}
-			return "", fmt.Errorf("リマインダーを操作できません（osascript %s）", m[1])
-		}
-		return "", fmt.Errorf("リマインダーを操作できません: %w", err)
-	}
-	return stdout.String(), nil
-}
-
-func lines(out string) []string {
-	var result []string
-	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			result = append(result, line)
-		}
-	}
-	return result
+	return applescript.Lines(out), nil
 }
