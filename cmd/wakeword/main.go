@@ -109,6 +109,7 @@ func once(ctx context.Context, args []string) error {
 	var requestWAVs stringList
 	flags.Var(&requestWAVs, "request-wav", "呼びかけなしの日本語依頼WAV。複数指定すると同じ会話で順に依頼する")
 	listen := flags.Duration("listen", 30*time.Second, "呼びかけを待つ上限")
+	realtime := flags.Bool("realtime", false, "--source-wav をマイクと同じ速さで流す")
 	cfg, err := loadConfig(flags, args)
 	if err != nil {
 		return err
@@ -128,7 +129,7 @@ func once(ctx context.Context, args []string) error {
 			listeners = append(listeners, audio.RequestWAV{Path: path})
 		}
 	case *sourceWAV != "":
-		listeners = append(listeners, a.captureListener(audio.WAVFile{Path: *sourceWAV}, 0))
+		listeners = append(listeners, a.captureListener(audio.WAVFile{Path: *sourceWAV, Realtime: *realtime}, 0))
 	default:
 		listeners = append(listeners, a.microphoneListener(*listen))
 	}

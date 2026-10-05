@@ -21,7 +21,7 @@ cp config.example.toml config.local.toml
 bin/wakeword once --config config.local.toml
 ```
 
-呼びかけ→日本語依頼→文字起こし→AI→VOICEVOX→スピーカー再生を一往復して終了する。テスト音声で試す場合は`--source-wav /absolute/path/combined.wav`、呼びかけなしの日本語WAVなら`--request-wav /absolute/path/request.wav`を指定する。`--request-wav`を複数指定すると、同じ会話で順に依頼し、2件目以降に履歴を渡す。どちらもAIの利用量を消費する。
+呼びかけ→日本語依頼→文字起こし→AI→VOICEVOX→スピーカー再生を一往復して終了する。テスト音声で試す場合は`--source-wav /absolute/path/combined.wav`、呼びかけなしの日本語WAVなら`--request-wav /absolute/path/request.wav`を指定する。`--request-wav`を複数指定すると、同じ会話で順に依頼し、2件目以降に履歴を渡す。`--source-wav`に`--realtime`を付けると、マイクと同じ速さで流し、呼びかけの検出時に始まる準備を含めて応答時間を測れる。どちらもAIの利用量を消費する。
 
 ## AIの権限・データ
 
