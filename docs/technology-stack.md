@@ -14,7 +14,7 @@
 | マイク入力・再生 | malgo v0.11.26（miniaudio、CoreAudio） | 内蔵マイク入力・スピーカー再生を確認。外部コマンドや一時ファイルを使わない |
 | ウェイクワード | openWakeWordのONNXモデル＋onnxruntime_go v1.36.0／ONNX Runtime 1.29.0 | 前処理をGoで再実装。Python版とフレームごとのスコアが一致 |
 | 発話区間検出 | Silero VAD（openWakeWord配布のv4形式） | 同上 |
-| 日本語文字起こし | whisper.cppのwhisper-serverを常駐、公式Whisper多言語モデル | Metal使用で3.7秒の依頼を約0.17秒で認識 |
+| 日本語文字起こし | whisper.cppのwhisper-server（呼びかけ時に起動し、使わなければ止める）、公式Whisper多言語モデル | Metal使用で3.7秒の依頼を約0.17秒で認識 |
 | AIへの依頼 | 公式Codex CLI（`codex exec`）、Claude Code CLI（`claude -p`、逐次受信） | どちらも実応答を確認 |
 | 日本語読み上げ | VOICEVOX ENGINE 0.25.2 | 文ごとに合成し、再生と並行して次の文を合成 |
 | 常駐 | `wakeword serve`。LaunchAgent用plistを生成可能 | ターミナル起動を確認。LaunchAgentは未登録 |

@@ -11,9 +11,9 @@ go build -o bin/wakeword ./cmd/wakeword
 bin/wakeword serve --config config.local.toml
 ```
 
-起動時に、whisper-serverとVOICEVOXが未起動なら並行して起動する。両方の準備ができてから待ち受けを始める。既に起動しているものはそのまま使い、停止もしない。同一プロジェクトの重複起動は拒否する。`prevent_sleep = true`の場合、サーバーが動いている間だけcaffeinateで画面・システムのスリープを防ぐ。恒久的なスリープ設定は変更しない。Macは電源に接続し、蓋を開けて使う。
+whisper-serverとVOICEVOXは、待ち受け中は止めておく。ウェイクワードを検出した時点で並行して起動し、話している間に準備（無音の文字起こしと短い文の合成）を終える。最後に使ってから`service_idle_timeout`（既定300秒）使わなければ止める。待ち受け中のメモリは約0.4GB減る（2026-10-05の計測で、whisper-server約210MB、VOICEVOX約220MB）。`service_idle_timeout = 0`にすると、従来どおり起動時に両方を準備して常駐させる。既に起動しているものはそのまま使い、停止もしない。同一プロジェクトの重複起動は拒否する。`prevent_sleep = true`の場合、サーバーが動いている間だけcaffeinateで画面・システムのスリープを防ぐ。恒久的なスリープ設定は変更しない。Macは電源に接続し、蓋を開けて使う。
 
-停止は起動したターミナルでCtrl-C（SIGTERMでも可）。自分で起動した子プロセスを終了し、スリープ防止も解除する。whisper-serverやVOICEVOXが途中で終了した場合は、サーバーも異常終了する。LaunchAgentで運用する場合は、launchdが再起動する。
+停止は起動したターミナルでCtrl-C（SIGTERMでも可）。自分で起動した子プロセスを終了し、スリープ防止も解除する。whisper-serverやVOICEVOXが途中で終了した場合は、次に使うときに起動し直す。起動に失敗した場合は`error`状態になり、次の呼びかけで再び起動を試みる。caffeinateが終了した場合はサーバーも異常終了し、LaunchAgentで運用する場合はlaunchdが再起動する。
 
 状態はJSON行で標準エラーへ、一往復の結果と`timings_ms`は標準出力へ出す。依頼・返答の内容は出さない。子プロセスの出力は発話を含み得るため保存しない。
 

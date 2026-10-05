@@ -78,6 +78,8 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 	if len(pcm) == 0 {
 		return Result{Reason: "no_speech"}, nil
 	}
+	// 読み上げの準備を文字起こしと並行して進める。呼びかけの時点で始めていれば何もしない
+	Prepare(r.Transcriber, r.Synthesizer)
 	start := r.now()
 	var timings Timings
 

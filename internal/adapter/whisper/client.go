@@ -89,3 +89,9 @@ func (c *Client) Ready(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Warmup は無音を一度文字起こしし、起動直後の最初の依頼で文字起こしが遅くならないようにする。
+func (c *Client) Warmup(ctx context.Context) error {
+	_, err := c.Transcribe(ctx, make([]int16, 16000/2))
+	return err
+}

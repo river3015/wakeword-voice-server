@@ -78,9 +78,13 @@ func (c *Client) post(ctx context.Context, route string, body []byte) ([]byte, e
 	return data, nil
 }
 
-// Warmup は話者の音声モデルを先に読み込み、最初の依頼で合成が遅くならないようにする。
+// Warmup は話者の音声モデルを読み込み、短い文を一度合成して、最初の依頼で合成が遅くならないようにする。
+// 話者の読み込みだけでは、起動直後の最初の合成が1秒以上遅いままだった。
 func (c *Client) Warmup(ctx context.Context) error {
-	_, err := c.post(ctx, fmt.Sprintf("/initialize_speaker?speaker=%d&skip_reinit=true", c.speaker), nil)
+	if _, err := c.post(ctx, fmt.Sprintf("/initialize_speaker?speaker=%d&skip_reinit=true", c.speaker), nil); err != nil {
+		return err
+	}
+	_, err := c.Synthesize(ctx, "はい。")
 	return err
 }
 

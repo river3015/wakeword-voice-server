@@ -35,18 +35,20 @@ type app struct {
 	cfg          *config.Config
 	devices      *audio.Devices
 	detector     *onnx.Detector
-	whisper      *whisper.Client
-	voicevox     *voicevox.Client
+	transcriber  usecase.Transcriber
+	synthesizer  usecase.Synthesizer
 	responder    responder
 	conversation *domain.Conversation
 	skills       []usecase.Skill
-	children     []*process.Child
+	services     []*process.Service // 使うときだけ起動する whisper-server や VOICEVOX
+	children     []*process.Child   // 起動中ずっと動かす caffeinate
 	release      func()
 	cancel       context.CancelCauseFunc
 }
 
-// start は部品を準備する。whisper-server と VOICEVOX は時間がかかるので並行して起動する。
-// 子プロセスが途中で落ちたら、返す ctx を取り消してサーバーを止める。
+// start は部品を準備する。whisper-server と VOICEVOX は、service_idle_timeout が 0 なら
+// ここで並行して起動し、それ以外は呼びかけを検出したときに起動する。
+// caffeinate が途中で落ちたら、返す ctx を取り消してサーバーを止める。
 func start(parent context.Context, cfg *config.Config, microphone bool) (*app, context.Context, error) {
 	a := &app{cfg: cfg}
 	ok := false
@@ -65,12 +67,6 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 	if err := a.responder.Validate(); err != nil {
 		return nil, nil, err
 	}
-	if a.whisper, err = whisper.New(cfg.WhisperURL, config.Seconds(cfg.STTTimeout)); err != nil {
-		return nil, nil, err
-	}
-	if a.voicevox, err = voicevox.New(cfg.VoicevoxURL, cfg.Speaker, time.Minute); err != nil {
-		return nil, nil, err
-	}
 	if a.conversation, err = domain.NewConversation(config.Seconds(cfg.Conversation.TTL),
 		cfg.Conversation.MaxTurns, cfg.Conversation.MaxCharacters, nil); err != nil {
 		return nil, nil, err
@@ -78,7 +74,12 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 	if a.skills, err = newSkills(parent, cfg); err != nil {
 		return nil, nil, err
 	}
-	a.whisper.Prompt = vocabularyPrompt(a.skills)
+	if err := a.newTranscriber(); err != nil {
+		return nil, nil, err
+	}
+	if err := a.newSynthesizer(); err != nil {
+		return nil, nil, err
+	}
 	if a.devices, err = audio.NewDevices(); err != nil {
 		return nil, nil, err
 	}
@@ -88,44 +89,19 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 	if a.detector, err = onnx.NewDetector(cfg.Path(cfg.WakeModel), cfg.Path(cfg.VADModel)); err != nil {
 		return nil, nil, fmt.Errorf("検出モデルを読み込めません: %w", err)
 	}
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var errs []error
-	launch := func(name string, argv []string, ready func(context.Context) error) {
-		wg.Go(func() {
-			child, err := process.Start(parent, name, argv, cfg.Base(), 2*time.Minute, ready)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				errs = append(errs, err)
-				return
-			}
-			a.children = append(a.children, child)
-		})
-	}
-	if !alreadyReady(parent, a.whisper.Ready) {
-		if cfg.WhisperServer == "" {
-			return nil, nil, errors.New("whisper-serverに接続できません。whisper_serverを設定するか起動してください")
-		}
-		launch("whisper-server", a.whisperArgs(), a.whisper.Ready)
-	}
-	if !alreadyReady(parent, a.voicevox.Ready) {
-		if cfg.VoicevoxEngine == "" {
-			return nil, nil, errors.New("VOICEVOXに接続できません。voicevox_engineを設定するか起動してください")
-		}
-		launch("VOICEVOX", a.voicevoxArgs(), a.voicevox.Ready)
-	}
 	if cfg.PreventSleep && microphone {
 		// このプロセスが終わると caffeinate も終わる
-		launch("caffeinate", []string{"/usr/bin/caffeinate", "-di", "-w", fmt.Sprint(os.Getpid())}, nil)
+		child, err := process.Start(parent, "caffeinate",
+			[]string{"/usr/bin/caffeinate", "-di", "-w", fmt.Sprint(os.Getpid())}, cfg.Base(), 0, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		a.children = append(a.children, child)
 	}
-	wg.Wait()
-	if err := errors.Join(errs...); err != nil {
-		return nil, nil, err
-	}
-	if err := a.voicevox.Warmup(parent); err != nil {
-		return nil, nil, fmt.Errorf("VOICEVOXの話者を初期化できません: %w", err)
+	if cfg.ServiceIdleTimeout == 0 {
+		if err := a.startServices(parent); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	ctx, cancel := context.WithCancelCause(parent)
@@ -140,8 +116,84 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 		}()
 	}
 	ok = true
-	slog.Info("ready", "provider", cfg.Provider, "voice", cfg.VoicevoxCredit)
+	slog.Info("ready", "provider", cfg.Provider, "voice", cfg.VoicevoxCredit,
+		"service_idle_timeout", cfg.ServiceIdleTimeout)
 	return a, ctx, nil
+}
+
+// newTranscriber は whisper-server を使う文字起こしを組み立てる。
+func (a *app) newTranscriber() error {
+	cfg := a.cfg
+	client, err := whisper.New(cfg.WhisperURL, config.Seconds(cfg.STTTimeout))
+	if err != nil {
+		return err
+	}
+	client.Prompt = vocabularyPrompt(a.skills)
+	var argv []string
+	if cfg.WhisperServer != "" {
+		if err := requireFiles(cfg.Path(cfg.WhisperServer), cfg.Path(cfg.WhisperModel)); err != nil {
+			return err
+		}
+		argv = a.whisperArgs()
+	}
+	service := a.newService("whisper-server", argv, client.Ready, client.Warmup)
+	a.transcriber = usecase.OnDemandTranscriber{Transcriber: client, Service: service}
+	return nil
+}
+
+// newSynthesizer は VOICEVOX を使う読み上げを組み立てる。
+// 常駐プロセスが要らない読み上げ（macOS の say など）に替える場合は、Service を使わずにここで差し替える。
+func (a *app) newSynthesizer() error {
+	cfg := a.cfg
+	client, err := voicevox.New(cfg.VoicevoxURL, cfg.Speaker, time.Minute)
+	if err != nil {
+		return err
+	}
+	var argv []string
+	if cfg.VoicevoxEngine != "" {
+		if err := requireFiles(cfg.Path(cfg.VoicevoxEngine)); err != nil {
+			return err
+		}
+		argv = a.voicevoxArgs()
+	}
+	service := a.newService("VOICEVOX", argv, client.Ready, client.Warmup)
+	a.synthesizer = usecase.OnDemandSynthesizer{Synthesizer: client, Service: service}
+	return nil
+}
+
+// newService は argv が空なら起動済みのものだけを使う Service を作る。
+func (a *app) newService(name string, argv []string, ready, init func(context.Context) error) *process.Service {
+	service := &process.Service{Name: name, Argv: argv, Dir: a.cfg.Base(), StartTimeout: 2 * time.Minute,
+		IdleTimeout: config.Seconds(a.cfg.ServiceIdleTimeout), Ready: ready, Init: init}
+	a.services = append(a.services, service)
+	return service
+}
+
+// startServices は全ての Service を並行して起動し、準備ができるまで待つ。
+func (a *app) startServices(ctx context.Context) error {
+	errs := make([]error, len(a.services))
+	var wg sync.WaitGroup
+	for i, service := range a.services {
+		wg.Go(func() {
+			if errs[i] = service.Acquire(ctx); errs[i] == nil {
+				service.Release()
+			}
+		})
+	}
+	wg.Wait()
+	return errors.Join(errs...)
+}
+
+// prepare は呼びかけを検出した時点で、文字起こしと読み上げの準備を始める。
+func (a *app) prepare() { usecase.Prepare(a.transcriber, a.synthesizer) }
+
+func requireFiles(paths ...string) error {
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("ファイルがありません: %w", err)
+		}
+	}
+	return nil
 }
 
 // responder は設定で選んだ AI CLI。どちらも usecase.Responder を満たす。
@@ -203,12 +255,6 @@ func vocabularyPrompt(skills []usecase.Skill) string {
 	return strings.Join(words, "、") + "。"
 }
 
-func alreadyReady(ctx context.Context, ready func(context.Context) error) bool {
-	probe, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	return ready(probe) == nil
-}
-
 func (a *app) whisperArgs() []string {
 	u, _ := url.Parse(a.cfg.WhisperURL) // 形式は whisper.New で確認済み
 	args := []string{a.cfg.Path(a.cfg.WhisperServer), "-m", a.cfg.Path(a.cfg.WhisperModel), "-l", "ja",
@@ -232,6 +278,9 @@ func (a *app) close() {
 	for i := len(a.children) - 1; i >= 0; i-- {
 		a.children[i].Stop()
 	}
+	for _, service := range a.services {
+		service.Close()
+	}
 	if a.detector != nil {
 		a.detector.Close()
 	}
@@ -249,10 +298,11 @@ func (a *app) speaker() *audio.Speaker {
 
 func (a *app) captureListener(opener usecase.FrameOpener, maxWait time.Duration) *usecase.CaptureListener {
 	l := &usecase.CaptureListener{Opener: opener, Detector: a.detector, Settings: a.cfg.Capture,
-		MaxWait: maxWait, OnState: logState}
+		MaxWait: maxWait, OnState: logState, OnRecording: a.prepare}
 	if a.cfg.ReceiptCue {
 		cue, speaker := audio.Cue(), a.speaker()
 		l.OnRecording = func() {
+			a.prepare()
 			// 録音を止めないよう別の goroutine で鳴らす。反響は settle_seconds の間捨てる
 			go func() {
 				if err := speaker.Play(context.Background(), cue); err != nil {
@@ -269,8 +319,8 @@ func (a *app) microphoneListener(maxWait time.Duration) *usecase.CaptureListener
 }
 
 func (a *app) runner(listener usecase.Listener) *usecase.TurnRunner {
-	return &usecase.TurnRunner{Listener: listener, Transcriber: a.whisper, Responder: a.responder,
-		Synthesizer: a.voicevox, Player: a.speaker(), Conversation: a.conversation, Skills: a.skills, OnState: logState}
+	return &usecase.TurnRunner{Listener: listener, Transcriber: a.transcriber, Responder: a.responder,
+		Synthesizer: a.synthesizer, Player: a.speaker(), Conversation: a.conversation, Skills: a.skills, OnState: logState}
 }
 
 func logState(s usecase.State) { slog.Info("state", "state", string(s)) }

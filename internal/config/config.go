@@ -82,6 +82,9 @@ type Config struct {
 	ReceiptCue   bool   `toml:"receipt_cue"`
 	PreventSleep bool   `toml:"prevent_sleep"`
 
+	// whisper-server と VOICEVOX を使わなくなってから止めるまでの秒数。0 なら起動時から常駐させる
+	ServiceIdleTimeout float64 `toml:"service_idle_timeout"`
+
 	Capture      domain.CaptureSettings `toml:"capture"`
 	Conversation Conversation           `toml:"conversation"`
 	Skills       Skills                 `toml:"skills"`
@@ -98,7 +101,7 @@ func defaults() Config {
 		WhisperModel: ".models/whisper/ggml-base.bin", WhisperURL: "http://127.0.0.1:8178",
 		WhisperThreads: 4, GPU: true, STTTimeout: 60,
 		VoicevoxURL: "http://127.0.0.1:50021", VoicevoxCredit: "VOICEVOX:四国めたん",
-		ReceiptCue: true, PreventSleep: true,
+		ReceiptCue: true, PreventSleep: true, ServiceIdleTimeout: 300,
 		Capture:      domain.DefaultCaptureSettings(),
 		Conversation: Conversation{TTL: 300, MaxTurns: 6, MaxCharacters: 16000},
 		Skills:       Skills{Lists: Lists{Shopping: "買い物", ToDo: "ToDo", Memo: "メモ"}},
@@ -159,6 +162,9 @@ func (c *Config) validate() error {
 	}
 	if c.STTTimeout <= 0 || c.STTTimeout > 600 || c.AITimeout <= 0 || c.AITimeout > 1800 {
 		return errors.New("タイムアウトの設定が不正です")
+	}
+	if c.ServiceIdleTimeout < 0 || c.ServiceIdleTimeout > 86400 {
+		return errors.New("service_idle_timeoutは0〜86400秒にしてください")
 	}
 	if c.WhisperThreads < 1 || c.WhisperThreads > 32 {
 		return errors.New("whisper_threadsは1〜32にしてください")
