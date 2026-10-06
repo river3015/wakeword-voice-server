@@ -21,6 +21,7 @@
 | Piperの現行開発先 | GPL-3.0 | 音声モデルごとのMODEL_CARDを確認 | なし | 今回は優先しない。公式音声一覧で日本語を確認できず |
 | Open JTalk | Modified BSD | 選択する辞書・音声モデルは別途確認 | なし | 日本語TTSの代替候補。モデル監査は未完了 |
 | macOSの音声合成 | OS付属機能。OSSとして扱わない | OSの利用条件に従う | 別途音声API課金を使わない構成が可能 | OSS優先方針では補助候補 |
+| DiscordのローカルRPC | Discordのアプリの機能。自前の実装でIPCに接続する | Discordの開発者規約に従う。承認されていないアプリは、オーナーとテスター（最大50人）だけが使える（公式のRPCの文書） | なし | 本人のDiscordを通話に入れるために使う。本人用に限り、配布しない |
 
 Go版の実装で使うライブラリ：ONNX Runtime（MIT）、onnxruntime_go（MIT）、malgo／miniaudio（パブリックドメイン。miniaudioはMIT No Attributionも選べる）、BurntSushi/toml（MIT）。各リポジトリのLICENSEファイルで確認した。
 

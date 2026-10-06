@@ -1,16 +1,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/river3015/wakeword-voice-server/internal/adapter/audio"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/discord"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/onnx"
 	"github.com/river3015/wakeword-voice-server/internal/config"
 )
@@ -124,5 +128,65 @@ func launchAgent(args []string) error {
 		return err
 	}
 	fmt.Println(output)
+	return nil
+}
+
+// discordClient は設定の [discord] から、本人をボイスチャンネルに入れるクライアントを作る。
+func discordClient(cfg *config.Config) (*discord.Client, error) {
+	if cfg.Discord.ClientID == "" || cfg.Discord.ChannelID == "" {
+		return nil, errors.New("設定ファイルの[discord]にclient_idとchannel_idを書いてください")
+	}
+	return &discord.Client{ClientID: cfg.Discord.ClientID, ChannelID: cfg.Discord.ChannelID,
+		Secrets: discord.Keychain{}}, nil
+}
+
+// discordAuth は Discord の RPC を認可し、トークンをキーチェーンに保存する。
+func discordAuth(ctx context.Context, args []string) error {
+	cfg, err := loadConfig(flag.NewFlagSet("discord-auth", flag.ContinueOnError), args)
+	if err != nil {
+		return err
+	}
+	client, err := discordClient(cfg)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Discordのアプリに確認画面が出ます。承認してください。")
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := client.Authorize(ctx); err != nil {
+		return err
+	}
+	fmt.Println("認可しました。トークンをキーチェーン（" + discord.TokenService + "）に保存しました。")
+	return nil
+}
+
+// discordJoin は検証用に、ボイスチャンネルに入って抜けるまで待つ。
+func discordJoin(ctx context.Context, args []string) error {
+	cfg, err := loadConfig(flag.NewFlagSet("discord-join", flag.ContinueOnError), args)
+	if err != nil {
+		return err
+	}
+	client, err := discordClient(cfg)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	start := time.Now()
+	if err := client.Connect(ctx); err != nil {
+		return err
+	}
+	slog.Info("discord connected", "ms", time.Since(start).Milliseconds())
+	start = time.Now()
+	joinCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	call, err := client.Join(joinCtx)
+	cancel()
+	if err != nil {
+		return err
+	}
+	slog.Info("discord joined", "ms", time.Since(start).Milliseconds())
+	if err := call.Wait(ctx); err != nil {
+		return err
+	}
+	slog.Info("discord left")
 	return nil
 }

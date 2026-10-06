@@ -27,6 +27,38 @@ whisper-serverとVOICEVOXは、待ち受け中は止めておく。ウェイク�
 
 制御語を含む説明文は制御命令として扱わない。再起動、停止、履歴期限切れでも履歴を破棄する。現在の設計は、毎回ウェイクワードで追加依頼を受け付ける。読み上げやAI処理の途中に音声で割り込む機能はない。処理中に止めたい場合はCtrl-Cを使う。
 
+## Discordの通話に入る
+
+`action = "discord"`のウェイクワード（例：Hey Jarvis）を検出すると、依頼を聞かずに、本人のDiscordを`[discord]`のボイスチャンネルに入れる。Discordのデスクトップアプリのローカル RPC（`$TMPDIR/discord-ipc-0`のUnixソケット）を使う。BotやユーザーのトークンでDiscordの本人のアカウントを操作する方法（self-bot）は規約違反なので使わない。入った後は、AIエージェントのBot（別リポジトリのvoice-agent-discord）が本人の参加を検知して同じチャンネルに入る。
+
+通話中は`handed_off`状態になり、マイクを閉じて待ち受けを止める。本人がボイスチャンネルから抜けるか、Discordを終了すると待ち受けに戻る。入ったことはDiscordの参加音とBotのあいさつで分かるので、読み上げない。
+
+### 準備（最初に一度だけ）
+
+1. Developer Portal（https://discord.com/developers/applications）で、Botのアプリの「OAuth2」→「Redirects」に`http://127.0.0.1`を追加して保存する。ブラウザで開くことはなく、トークンの取得時に登録済みの値と照合されるだけ。
+2. 同じ画面の「Client Secret」で「Reset Secret」を押し、表示された値をキーチェーンに保存する。値は一度しか表示されない。Botのトークンとは別なので、Botは止まらない。
+
+   ```sh
+   security add-generic-password -s wakeword-discord-client-secret -a "$USER" -w
+   ```
+
+3. `config.local.toml`に`[discord]`の`client_id`（アプリのID）と`channel_id`（ボイスチャンネルを右クリック→リンクをコピーしたURLの最後の数字）を書き、ウェイクワードに`action = "discord"`を付ける。
+4. 認可する。Discordのアプリに確認画面が出るので承認する。トークンはキーチェーン（`wakeword-discord-rpc-token`）に保存され、使うたびに更新する。scopeは`rpc`だけで、アプリのオーナー本人ならテスター登録なしで使えた（2026-10-07）。
+
+   ```sh
+   bin/wakeword discord-auth --config config.local.toml
+   bin/wakeword discord-join --config config.local.toml  # 検証用。入って、抜けるまで待つ
+   ```
+
+### 接続の扱い
+
+Discordのアプリは、短い間に何度もRPCへ接続すると、接続の確立（handshake）に6〜30秒かかるようになった。3分ほど空けると15〜42msに戻った（2026-10-07、原因は推測で、Discord側の制限とみている）。そのため`serve`は起動時に接続を張り、認証とイベントの購読を済ませて保ち続ける。呼びかけのときは参加の命令だけを送る。切れたら30秒ごとに張り直す。Discordが起動していなくても、待ち受けは続ける。
+
+### 検証記録（2026-10-07）
+
+- `say -v Samantha "Hey Jarvis"`のWAVを`--realtime`で流し、検出から参加まで38ms、その約0.8秒後にBotも同じチャンネルに入った。RPCで退出させると`discord left`の後に待ち受けへ戻った。
+- 人の声、`serve`での長時間の待ち受け、LaunchAgentの下での動作は未確認。
+
 ## 障害時の動作
 
 認識・AI・読み上げ・マイク入力のエラーは`error`状態を表示し、2〜10秒の待ち時間後に新しい呼びかけを待つ。失敗した依頼を自動再送しない。無音の待ち受けや発話が短すぎる場合はAIを呼ばない。音声や返答内容は標準ログへ出さない。

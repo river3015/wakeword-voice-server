@@ -110,6 +110,7 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 		name    string
 		replies iter.Seq2[string, error]
 		after   func(context.Context) error
+		until   func(context.Context) error
 	)
 	if skill, invoke := r.matchSkill(text); invoke != nil {
 		name = skill.Name()
@@ -119,7 +120,7 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 			_, _ = r.respondAndSpeak(ctx, fixed(skillFailedNotice), start, &timings)
 			return Result{}, fmt.Errorf("skill %s: %w", name, err)
 		}
-		replies, after = fixed(outcome.Reply), outcome.AfterSpeech
+		replies, after, until = fixed(outcome.Reply), outcome.AfterSpeech, outcome.Until
 	} else {
 		replies = r.Responder.Respond(ctx, VoiceInstruction+r.Conversation.Prompt(text))
 	}
@@ -133,6 +134,9 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 		}
 	}
 	timings.Total = r.now().Sub(start)
+	if err := r.hold(ctx, until); err != nil {
+		return Result{}, fmt.Errorf("skill %s: %w", name, err)
+	}
 	// スキルの結果も履歴に残し、続けて AI に「さっき何を追加した？」と聞けるようにする
 	r.Conversation.Remember(text, reply)
 	return Result{Completed: true, Wake: heard.Wake, Skill: name, ReplyCharacter: len([]rune(reply)), Timings: timings}, nil
@@ -141,7 +145,7 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 // runWakeAction は依頼を聞かずにウェイクワードに結びついた動作を行い、返答があれば読み上げる。
 // 履歴には残さない。
 func (r *TurnRunner) runWakeAction(ctx context.Context, wake string, action Invocation) (Result, error) {
-	Prepare(r.Synthesizer)
+	// 読み上げない動作（Discord の通話に入るなど）もあるので、読み上げの準備は先に始めない
 	start := r.now()
 	var timings Timings
 	r.notify(StateProcessing)
@@ -161,7 +165,22 @@ func (r *TurnRunner) runWakeAction(ctx context.Context, wake string, action Invo
 		}
 	}
 	timings.Total = r.now().Sub(start)
+	if err := r.hold(ctx, outcome.Until); err != nil {
+		return Result{}, fmt.Errorf("wake %s: %w", wake, err)
+	}
 	return Result{Completed: true, Wake: wake, ReplyCharacter: len([]rune(outcome.Reply)), Timings: timings}, nil
+}
+
+// hold は until が戻るまで待ち受けを止める。停止の指示（ctx の取り消し）では待つのをやめる。
+func (r *TurnRunner) hold(ctx context.Context, until func(context.Context) error) error {
+	if until == nil {
+		return nil
+	}
+	r.notify(StateHandedOff)
+	if err := until(ctx); err != nil && ctx.Err() == nil {
+		return err
+	}
+	return nil
 }
 
 func (r *TurnRunner) matchSkill(text string) (Skill, Invocation) {

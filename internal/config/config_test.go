@@ -114,3 +114,17 @@ model = ".models/openwakeword/hey_jarvis_v0.1.onnx"
 		}
 	}
 }
+
+func TestLoadDiscordWakeWordRequiresIDs(t *testing.T) {
+	wake := "[[wake_words]]\nmodel = \"x/hey_jarvis.onnx\"\naction = \"discord\"\n"
+	if _, err := Load(write(t, wake)); err == nil {
+		t.Error("[discord]なしで受け付けた")
+	}
+	c, err := Load(write(t, wake+"[discord]\nclient_id = \"123\"\nchannel_id = \"456\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Discord.ChannelID != "456" || c.WakeWords[0].Action != WakeActionDiscord {
+		t.Errorf("discord = %+v, wake = %+v", c.Discord, c.WakeWords)
+	}
+}

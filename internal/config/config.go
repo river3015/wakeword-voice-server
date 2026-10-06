@@ -43,12 +43,22 @@ type Music struct {
 // WakeWord は wake_model に加えて待ち受けるウェイクワード
 type WakeWord struct {
 	Model string `toml:"model"`
-	// Action は検出したときの動作。turn（既定）は wake_model と同じく依頼を聞いて一往復する
+	// Action は検出したときの動作。turn（既定）は wake_model と同じく依頼を聞いて一往復する。
+	// discord は依頼を聞かずに Discord のボイスチャンネルに入る
 	Action string `toml:"action"`
 }
 
-// WakeActionTurn は依頼を聞いて一往復する動作。
-const WakeActionTurn = "turn"
+// ウェイクワードを検出したときの動作。
+const (
+	WakeActionTurn    = "turn"    // 依頼を聞いて一往復する
+	WakeActionDiscord = "discord" // 依頼を聞かずに Discord のボイスチャンネルに入り、抜けるまで待ち受けを止める
+)
+
+// Discord は本人を入れるボイスチャンネル。Client Secret とトークンはキーチェーンに置く
+type Discord struct {
+	ClientID  string `toml:"client_id"`  // Developer Portal のアプリの ID
+	ChannelID string `toml:"channel_id"` // ボイスチャンネルの ID
+}
 
 // Skills は AI を通さずに処理するスキル。既定ではすべて無効
 type Skills struct {
@@ -99,6 +109,7 @@ type Config struct {
 	Capture      domain.CaptureSettings `toml:"capture"`
 	Conversation Conversation           `toml:"conversation"`
 	Skills       Skills                 `toml:"skills"`
+	Discord      Discord                `toml:"discord"`
 
 	base string
 }
@@ -180,8 +191,14 @@ func (c *Config) validate() error {
 		if w.Action == "" {
 			w.Action = WakeActionTurn
 		}
-		if w.Action != WakeActionTurn {
-			return fmt.Errorf("wake_wordsのactionは%sにしてください: %s", WakeActionTurn, w.Action)
+		switch w.Action {
+		case WakeActionTurn:
+		case WakeActionDiscord:
+			if !discordID(c.Discord.ClientID) || !discordID(c.Discord.ChannelID) {
+				return errors.New("action = \"discord\"には[discord]のclient_idとchannel_id（数字のID）が必要です")
+			}
+		default:
+			return fmt.Errorf("wake_wordsのactionは%sか%sにしてください: %s", WakeActionTurn, WakeActionDiscord, w.Action)
 		}
 		if name := WakeName(w.Model); w.Model == "" || seen[name] {
 			return fmt.Errorf("wake_wordsのmodelが空か重複しています: %s", w.Model)
@@ -232,6 +249,11 @@ func (c *Config) Executable(value string) string {
 		return c.Path(value)
 	}
 	return value
+}
+
+// discordID は Discord の ID（数字だけ）かを返す。
+func discordID(s string) bool {
+	return s != "" && strings.Trim(s, "0123456789") == ""
 }
 
 // WakeName はモデルのファイル名から、ログや動作の対応づけに使う名前を作る（例: hey_jarvis_v0.1）。

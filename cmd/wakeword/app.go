@@ -15,6 +15,7 @@ import (
 	"github.com/river3015/wakeword-voice-server/internal/adapter/audio"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/claude"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/codex"
+	"github.com/river3015/wakeword-voice-server/internal/adapter/discord"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/musicapp"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/onnx"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/openmeteo"
@@ -40,8 +41,10 @@ type app struct {
 	responder    responder
 	conversation *domain.Conversation
 	skills       []usecase.Skill
-	services     []*process.Service // 使うときだけ起動する whisper-server や VOICEVOX
-	children     []*process.Child   // 起動中ずっと動かす caffeinate
+	wakeActions  map[string]usecase.Invocation // 依頼を聞かずに動くウェイクワード
+	discord      *discord.Client               // action = "discord" のウェイクワードがあるときだけ
+	services     []*process.Service            // 使うときだけ起動する whisper-server や VOICEVOX
+	children     []*process.Child              // 起動中ずっと動かす caffeinate
 	release      func()
 	cancel       context.CancelCauseFunc
 }
@@ -72,6 +75,9 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 		return nil, nil, err
 	}
 	if a.skills, err = newSkills(parent, cfg); err != nil {
+		return nil, nil, err
+	}
+	if err := a.newWakeActions(); err != nil {
 		return nil, nil, err
 	}
 	if err := a.newTranscriber(); err != nil {
@@ -106,6 +112,12 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 
 	ctx, cancel := context.WithCancelCause(parent)
 	a.cancel = cancel
+	if a.discord != nil {
+		// Discord のアプリは接続の確立に数秒〜数十秒かかることがあるので、先に張っておく
+		go a.discord.Maintain(ctx, 30*time.Second, func(err error) {
+			slog.Warn("discord unavailable", "error", err.Error())
+		})
+	}
 	for _, child := range a.children {
 		go func() {
 			select {
@@ -241,6 +253,41 @@ func newSkills(ctx context.Context, cfg *config.Config) ([]usecase.Skill, error)
 	return skills, nil
 }
 
+// newWakeActions は action が turn 以外のウェイクワードに、検出したときの動作を結びつける。
+func (a *app) newWakeActions() error {
+	cfg := a.cfg
+	a.wakeActions = map[string]usecase.Invocation{}
+	for _, w := range cfg.WakeWords {
+		if w.Action != config.WakeActionDiscord {
+			continue
+		}
+		if a.discord == nil {
+			client, err := discordClient(cfg)
+			if err != nil {
+				return err
+			}
+			a.discord = client
+		}
+		client := a.discord
+		a.wakeActions[config.WakeName(w.Model)] = func(ctx context.Context) (usecase.Outcome, error) {
+			joinCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			call, err := client.Join(joinCtx)
+			if err != nil {
+				return usecase.Outcome{}, err
+			}
+			slog.Info("discord joined")
+			// 入ったことは Discord の参加音と Bot のあいさつで分かるので、読み上げない
+			return usecase.Outcome{Until: func(ctx context.Context) error {
+				err := call.Wait(ctx)
+				slog.Info("discord left")
+				return err
+			}}, nil
+		}
+	}
+	return nil
+}
+
 // vocabularyPrompt はスキルの語彙を文字起こしのヒントにまとめる。
 func vocabularyPrompt(skills []usecase.Skill) string {
 	var words []string
@@ -281,6 +328,9 @@ func (a *app) close() {
 	for _, service := range a.services {
 		service.Close()
 	}
+	if a.discord != nil {
+		a.discord.Close()
+	}
 	if a.detector != nil {
 		a.detector.Close()
 	}
@@ -301,8 +351,12 @@ func (a *app) captureListener(opener usecase.FrameOpener, maxWait time.Duration)
 	for _, model := range a.cfg.WakeModels() {
 		names = append(names, config.WakeName(model))
 	}
+	immediate := map[string]bool{}
+	for name := range a.wakeActions {
+		immediate[name] = true
+	}
 	l := &usecase.CaptureListener{Opener: opener, Detector: a.detector, Settings: a.cfg.Capture,
-		WakeWords: names, MaxWait: maxWait, OnState: logState, OnRecording: a.prepare}
+		WakeWords: names, Immediate: immediate, MaxWait: maxWait, OnState: logState, OnRecording: a.prepare}
 	if a.cfg.ReceiptCue {
 		cue, speaker := audio.Cue(), a.speaker()
 		l.OnRecording = func() {
@@ -324,7 +378,8 @@ func (a *app) microphoneListener(maxWait time.Duration) *usecase.CaptureListener
 
 func (a *app) runner(listener usecase.Listener) *usecase.TurnRunner {
 	return &usecase.TurnRunner{Listener: listener, Transcriber: a.transcriber, Responder: a.responder,
-		Synthesizer: a.synthesizer, Player: a.speaker(), Conversation: a.conversation, Skills: a.skills, OnState: logState}
+		Synthesizer: a.synthesizer, Player: a.speaker(), Conversation: a.conversation, Skills: a.skills,
+		WakeActions: a.wakeActions, OnState: logState}
 }
 
 func logState(s usecase.State) { slog.Info("state", "state", string(s)) }

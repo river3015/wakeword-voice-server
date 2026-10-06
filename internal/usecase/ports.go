@@ -67,6 +67,7 @@ const (
 	StateTranscribing State = "transcribing"
 	StateProcessing   State = "processing"
 	StateSpeaking     State = "speaking"
+	StateHandedOff    State = "handed_off" // Discord の通話中など、待ち受けを止めて他に任せている
 	StateError        State = "error"
 	StateStopped      State = "stopped"
 )
@@ -93,4 +94,7 @@ type Outcome struct {
 	Reply string // 読み上げる返答
 	// AfterSpeech は返答を読み上げた後に行う処理。音楽の再生開始などで、読み上げと音が重ならないようにする
 	AfterSpeech func(ctx context.Context) error
+	// Until は AfterSpeech の後に呼び、戻るまで次の待ち受けを始めない。Discord の通話中など。
+	// マイクは閉じたままにする
+	Until func(ctx context.Context) error
 }

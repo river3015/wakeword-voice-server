@@ -352,3 +352,45 @@ func TestRunWakeActionSkipsTranscriptionAndHistory(t *testing.T) {
 		t.Error("AI を呼んだか、履歴に残した")
 	}
 }
+
+func TestRunWakeActionHoldsUntilDone(t *testing.T) {
+	runner, _, states := newRunner(t, "", &stubResponder{})
+	runner.Listener = wakeListener("hey_jarvis")
+	release := make(chan struct{})
+	runner.WakeActions = map[string]Invocation{"hey_jarvis": func(context.Context) (Outcome, error) {
+		return Outcome{Until: func(context.Context) error { <-release; return nil }}, nil
+	}}
+	done := make(chan Result, 1)
+	go func() {
+		result, err := runner.Run(context.Background())
+		if err != nil {
+			t.Error(err)
+		}
+		done <- result
+	}()
+	select {
+	case <-done:
+		t.Fatal("通話が終わる前に待ち受けへ戻った")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	if result := <-done; !result.Completed {
+		t.Errorf("result = %+v", result)
+	}
+	if !slices.Contains(*states, StateHandedOff) || (*states)[len(*states)-1] != StateWaiting {
+		t.Errorf("states = %v", *states)
+	}
+}
+
+func TestRunWakeActionStopsHoldingOnCancel(t *testing.T) {
+	runner, _, _ := newRunner(t, "", &stubResponder{})
+	runner.Listener = wakeListener("hey_jarvis")
+	runner.WakeActions = map[string]Invocation{"hey_jarvis": func(context.Context) (Outcome, error) {
+		return Outcome{Until: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }}, nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	if _, err := runner.Run(ctx); err != nil {
+		t.Errorf("停止の指示をエラーにした: %v", err)
+	}
+}
