@@ -4,7 +4,6 @@
 //	wakeword once  --config config.local.toml     一往復だけ実行する（検証用）
 //	wakeword devices                              音声デバイスを一覧する
 //	wakeword detect-wake --config ... file.wav    WAVでウェイクワード検出を確かめる
-//	wakeword launch-agent --config ...            LaunchAgent の plist を生成する（登録はしない）
 //	wakeword discord-auth --config ...            Discord の RPC を認可する（最初に一度だけ）
 //	wakeword discord-join --config ...            Discord のボイスチャンネルに入り、抜けるまで待つ（検証用）
 package main
@@ -34,7 +33,6 @@ commands:
   once          一往復だけ実行する（--source-wav / --request-wav で録音済み音声も使える）
   devices       音声デバイスを一覧する
   detect-wake   WAVでウェイクワード検出を確かめる
-  launch-agent  LaunchAgent の plist を .runtime に生成する（登録はしない）
   discord-auth  Discord の RPC を認可する（最初に一度だけ。Discord に確認画面が出る）
   discord-join  Discord のボイスチャンネルに入り、抜けるまで待つ（検証用）
 `
@@ -57,8 +55,6 @@ func main() {
 		err = devices()
 	case "detect-wake":
 		err = detectWake(os.Args[2:])
-	case "launch-agent":
-		err = launchAgent(os.Args[2:])
 	case "discord-auth":
 		err = discordAuth(ctx, os.Args[2:])
 	case "discord-join":

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.river3015.wakeword-voice-server</string>
+  <key>CFBundleName</key>
+  <string>WakewordVoiceServer</string>
+  <key>CFBundleExecutable</key>
+  <string>wakeword</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <!-- 常駐用。Dockやメニューバーに出さない -->
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>ウェイクワードを待ち受け、呼びかけの後の依頼を文字起こしするために使います。音声は保存しません。</string>
+</dict>
+</plist>

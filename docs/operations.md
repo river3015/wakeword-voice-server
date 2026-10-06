@@ -11,9 +11,9 @@ go build -o bin/wakeword ./cmd/wakeword
 bin/wakeword serve --config config.local.toml
 ```
 
-whisper-serverとVOICEVOXは、待ち受け中は止めておく。ウェイクワードを検出した時点で並行して起動し、話している間に準備（無音の文字起こしと短い文の合成）を終える。最後に使ってから`service_idle_timeout`（既定300秒）使わなければ止める。待ち受け中のメモリは約0.4GB減る（2026-10-05の計測で、whisper-server約210MB、VOICEVOX約220MB）。`service_idle_timeout = 0`にすると、従来どおり起動時に両方を準備して常駐させる。既に起動しているものはそのまま使い、停止もしない。同一プロジェクトの重複起動は拒否する。`prevent_sleep = true`の場合、サーバーが動いている間だけcaffeinateで画面・システムのスリープを防ぐ。恒久的なスリープ設定は変更しない。Macは電源に接続し、蓋を開けて使う。
+whisper-serverとVOICEVOXは、待ち受け中は止めておく。ウェイクワードを検出した時点で並行して起動し、話している間に準備（無音の文字起こしと短い文の合成）を終える。最後に使ってから`service_idle_timeout`（既定300秒）使わなければ止める。待ち受け中のメモリは約0.4GB減る（2026-10-05の計測で、whisper-server約210MB、VOICEVOX約220MB）。`service_idle_timeout = 0`にすると、従来どおり起動時に両方を準備して常駐させる。既に起動しているものはそのまま使い、停止もしない。同一プロジェクトの重複起動は拒否する。`prevent_sleep = true`の場合、サーバーが動いている間だけcaffeinateでシステムのスリープを防ぐ（画面は消える）。恒久的なスリープ設定は変更しない。Macは電源に接続し、蓋を開けて使う。
 
-停止は起動したターミナルでCtrl-C（SIGTERMでも可）。自分で起動した子プロセスを終了し、スリープ防止も解除する。whisper-serverやVOICEVOXが途中で終了した場合は、次に使うときに起動し直す。起動に失敗した場合は`error`状態になり、次の呼びかけで再び起動を試みる。caffeinateが終了した場合はサーバーも異常終了し、LaunchAgentで運用する場合はlaunchdが再起動する。
+停止は起動したターミナルでCtrl-C（SIGTERMでも可）。LaunchAgentで動かしている場合は`scripts/install-launch-agent.sh uninstall`か`launchctl bootout gui/$(id -u)/io.github.river3015.wakeword-voice-server`（bootoutだけなら、次のログインで再び起動する）。自分で起動した子プロセスを終了し、スリープ防止も解除する。whisper-serverやVOICEVOXが途中で終了した場合は、次に使うときに起動し直す。起動に失敗した場合は`error`状態になり、次の呼びかけで再び起動を試みる。caffeinateが終了した場合はサーバーも異常終了し、LaunchAgentで運用する場合はlaunchdが再起動する。
 
 状態はJSON行で標準エラーへ、一往復の結果と`timings_ms`は標準出力へ出す。依頼・返答の内容は出さない。子プロセスの出力は発話を含み得るため保存しない。
 
@@ -67,27 +67,22 @@ Discordのアプリは、短い間に何度もRPCへ接続すると、接続の�
 
 Codexのread-onlyでは編集の依頼は実行できない。自宅の特定リポジトリを音声で編集する場合は、workdirを明示しsandboxをworkspace-writeにする。承認の迂回や権限拡大のフラグは付けないため、承認が必要な操作は拒否される場合がある。実環境デプロイや購入を音声認識だけで許可しない。
 
-## 任意のログイン時起動
+## ログイン時の自動起動（LaunchAgent）
 
-自動起動は任意。plistの生成だけでは登録されない。`go run`ではなく、ビルドした実行ファイルから生成する。
-
-```sh
-bin/wakeword launch-agent --config config.local.toml
-plutil -lint .runtime/local.wakeword-voice-server.plist
-mkdir -p "$HOME/Library/LaunchAgents"
-cp .runtime/local.wakeword-voice-server.plist "$HOME/Library/LaunchAgents/"
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/local.wakeword-voice-server.plist"
-launchctl print "gui/$(id -u)/local.wakeword-voice-server"
-```
-
-停止・登録解除：
+署名した`WakewordVoiceServer.app`を`~/Applications`に置き、LaunchAgent（`io.github.river3015.wakeword-voice-server`）でログイン時に起動する。異常終了したときだけlaunchdが再起動する。「サーバー停止」と話した場合は正常終了なので、再起動しない。
 
 ```sh
-launchctl bootout "gui/$(id -u)/local.wakeword-voice-server"
-rm "$HOME/Library/LaunchAgents/local.wakeword-voice-server.plist"
+scripts/make-cert.sh             # 最初に一度だけ。署名用の自己署名証明書をログインキーチェーンに作る
+scripts/build-app.sh             # build/WakewordVoiceServer.app を作る
+scripts/install-launch-agent.sh  # ~/Applications に置き、登録して起動する（入れ直しにも使う）
+scripts/install-launch-agent.sh uninstall
 ```
 
-マイク権限を確認してから登録する。plistには実行ファイルと設定ファイルの絶対パスが入るので、移動した場合は再生成する。実行ファイルを再ビルドした後もマイク許可が維持されるかは未確認。ターミナル起動時の許可がLaunchAgentにも適用されるとは限らないため、登録後に実機確認する。サービスの状態ログは.runtimeへ保存する。VOICEVOXのアクセスログは保存しない。故障時に再起動するKeepAlive設定なので、停止はbootoutで行う。この環境ではplist生成とplutil検証だけを実行しており、登録は行っていない。
+- マイク・リマインダー・ミュージックの許可は、ターミナルではなくこのアプリ（`io.github.river3015.wakeword-voice-server`）に対して求められる。初回に出るダイアログで許可する。同じ証明書で署名し直す限り、再ビルドしても許可は保たれる見込み（voice-inputと同じ方式。この環境では再ビルド後の確認は未実施）。
+- コードを変えたら`scripts/build-app.sh`と`scripts/install-launch-agent.sh`を実行し直す。
+- ログは`~/Library/Logs/wakeword-voice-server.log`。状態と応答時間だけで、依頼や返答の内容は出さない。ローテーションはしない。
+- 待ち受け中は、ウェイクワードの検出だけが動く。2026-10-07の起動直後で、本体のメモリ（RSS）は約35MB。whisper-serverとVOICEVOXは呼びかけたときに起動する。
+- `prevent_sleep = true`では、caffeinateでシステムのスリープだけを防ぐ（`-i`）。画面は通常どおり消える。蓋を閉じると、外部ディスプレイなしではスリープする。
 
 ## Go版の検証記録（2026-10-03）
 

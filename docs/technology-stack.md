@@ -17,7 +17,7 @@
 | 日本語文字起こし | whisper.cppのwhisper-server（呼びかけ時に起動し、使わなければ止める）、公式Whisper多言語モデル | Metal使用で3.7秒の依頼を約0.17秒で認識 |
 | AIへの依頼 | 公式Codex CLI（`codex exec`）、Claude Code CLI（`claude -p`、逐次受信） | どちらも実応答を確認 |
 | 日本語読み上げ | VOICEVOX ENGINE 0.25.2 | 文ごとに合成し、再生と並行して次の文を合成 |
-| 常駐 | `wakeword serve`。LaunchAgent用plistを生成可能 | ターミナル起動を確認。LaunchAgentは未登録 |
+| 常駐 | `wakeword serve`を署名した.appに入れ、LaunchAgentでログイン時に起動 | 2026-10-07にLaunchAgentで起動し、待ち受けまで確認。人の声は未確認 |
 
 既定のウェイクワードは「Hey Mycroft」。`[[wake_words]]`で「Hey Jarvis」などを追加できる。メルスペクトログラムと埋め込みは共通で1回だけ計算し、ウェイクワードごとの小さな判定モデルだけを並べる。2026-10-07の計測では、80msの1フレームの処理が約1.5ms、判定モデル1つの追加分は約0.025msだった。openWakeWordの同梱モデルは非商用限定という前提で使う。ライセンスは[調査メモ](licensing-and-costs.md)を参照。
 

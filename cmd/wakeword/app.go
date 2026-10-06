@@ -96,9 +96,9 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 		return nil, nil, fmt.Errorf("検出モデルを読み込めません: %w", err)
 	}
 	if cfg.PreventSleep && microphone {
-		// このプロセスが終わると caffeinate も終わる
+		// システムのスリープだけを防ぐ。常駐させるので画面は通常どおり消す。このプロセスが終わると caffeinate も終わる
 		child, err := process.Start(parent, "caffeinate",
-			[]string{"/usr/bin/caffeinate", "-di", "-w", fmt.Sprint(os.Getpid())}, cfg.Base(), 0, nil)
+			[]string{"/usr/bin/caffeinate", "-i", "-w", fmt.Sprint(os.Getpid())}, cfg.Base(), 0, nil)
 		if err != nil {
 			return nil, nil, err
 		}

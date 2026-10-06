@@ -3,14 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/river3015/wakeword-voice-server/internal/adapter/audio"
@@ -69,65 +65,6 @@ func detectWake(args []string) error {
 		out, _ := json.Marshal(result)
 		fmt.Println(string(out))
 	}
-	return nil
-}
-
-const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key><string>local.wakeword-voice-server</string>
-	<key>ProgramArguments</key>
-	<array><string>{{binary}}</string><string>serve</string><string>--config</string><string>{{config}}</string></array>
-	<key>WorkingDirectory</key><string>{{root}}</string>
-	<key>RunAtLoad</key><true/>
-	<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
-	<key>ThrottleInterval</key><integer>10</integer>
-	<key>StandardOutPath</key><string>{{root}}/.runtime/server.log</string>
-	<key>StandardErrorPath</key><string>{{root}}/.runtime/server-error.log</string>
-	<key>EnvironmentVariables</key>
-	<dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
-</dict>
-</plist>
-`
-
-// launchAgent は確認用の plist を生成するだけで、登録はしない。
-func launchAgent(args []string) error {
-	flags := flag.NewFlagSet("launch-agent", flag.ContinueOnError)
-	path := flags.String("config", "config.local.toml", "設定ファイル")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if _, err := os.Stat(*path); err != nil {
-		return fmt.Errorf("設定ファイルがありません: %w", err)
-	}
-	binary, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	if strings.Contains(binary, "go-build") {
-		return errors.New("go run ではなく、go build で作った実行ファイルから実行してください")
-	}
-	configPath, err := filepath.Abs(*path)
-	if err != nil {
-		return err
-	}
-	root := filepath.Dir(configPath)
-	escape := func(s string) string {
-		var b strings.Builder
-		xml.EscapeText(&b, []byte(s))
-		return b.String()
-	}
-	plist := strings.NewReplacer("{{binary}}", escape(binary), "{{config}}", escape(configPath),
-		"{{root}}", escape(root)).Replace(plistTemplate)
-	output := filepath.Join(root, ".runtime/local.wakeword-voice-server.plist")
-	if err := os.MkdirAll(filepath.Dir(output), 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(output, []byte(plist), 0o644); err != nil {
-		return err
-	}
-	fmt.Println(output)
 	return nil
 }
 

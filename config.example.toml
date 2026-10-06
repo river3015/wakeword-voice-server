@@ -33,7 +33,7 @@ voicevox_credit = "VOICEVOX:四国めたん"
 input_device = ""
 output_device = ""
 receipt_cue = true
-prevent_sleep = true # 起動中だけcaffeinateでスリープを防ぐ
+prevent_sleep = true # 起動中だけcaffeinateでシステムのスリープを防ぐ（画面は消える）
 # whisper-serverとVOICEVOXは呼びかけを検出したときに起動し、使わなくなってからこの秒数で止める。
 # 0なら起動時から常駐させる（速いが、待ち受け中も約0.4GBのメモリを使う）
 service_idle_timeout = 300
