@@ -61,6 +61,7 @@ type RequestWAV struct {
 	Path string
 }
 
-func (r RequestWAV) Listen(context.Context) ([]int16, error) {
-	return ReadRequestWAV(r.Path)
+func (r RequestWAV) Listen(context.Context) (usecase.Heard, error) {
+	pcm, err := ReadRequestWAV(r.Path)
+	return usecase.Heard{PCM: pcm}, err
 }

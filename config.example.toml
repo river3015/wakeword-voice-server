@@ -38,6 +38,13 @@ prevent_sleep = true # 起動中だけcaffeinateでスリープを防ぐ
 # 0なら起動時から常駐させる（速いが、待ち受け中も約0.4GBのメモリを使う）
 service_idle_timeout = 300
 
+# 追加のウェイクワード。共通の前処理は1回だけ計算するので、増やしても負荷はほぼ変わらない。
+# action = "turn" は wake_model と同じく依頼を聞いて一往復する（今はこれだけ）。
+# TOMLの表なので、トップレベルの項目より後ろ（[capture]の前）に置く
+# [[wake_words]]
+# model = ".models/openwakeword/hey_jarvis_v0.1.onnx"
+# action = "turn"
+
 [capture]
 wake_threshold = 0.5
 speech_threshold = 0.5

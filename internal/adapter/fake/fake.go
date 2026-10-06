@@ -1,5 +1,5 @@
 // Package fake はマイク・AI・音声合成なしで一往復を試すための偽物の実装。
-// usecase を import していないが、メソッドの形が一致するのでポートとして使える。
+// メソッドの形がポートと一致するので、そのままポートとして使える。
 package fake
 
 import (
@@ -8,6 +8,8 @@ import (
 	"io"
 	"iter"
 	"time"
+
+	"github.com/river3015/wakeword-voice-server/internal/usecase"
 )
 
 // wait は ctx が取り消されたら待ちを中断する。select は複数の channel のうち先に届いた方を選ぶ。
@@ -24,11 +26,11 @@ type Listener struct {
 	Delay time.Duration
 }
 
-func (l Listener) Listen(ctx context.Context) ([]int16, error) {
+func (l Listener) Listen(ctx context.Context) (usecase.Heard, error) {
 	if err := wait(ctx, l.Delay); err != nil {
-		return nil, err
+		return usecase.Heard{}, err
 	}
-	return make([]int16, 16000), nil // 1秒分の無音 PCM。中身は使わない
+	return usecase.Heard{PCM: make([]int16, 16000)}, nil // 1秒分の無音 PCM。中身は使わない
 }
 
 type Transcriber struct {

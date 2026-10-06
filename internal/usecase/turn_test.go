@@ -16,7 +16,7 @@ import (
 // テスト用の小さな偽物。ポートのメソッドを満たせば何でも差し込める。
 type stubListener []int16
 
-func (s stubListener) Listen(context.Context) ([]int16, error) { return s, nil }
+func (s stubListener) Listen(context.Context) (Heard, error) { return Heard{PCM: s}, nil }
 
 type stubTranscriber string
 
@@ -323,5 +323,32 @@ func TestRunSkillActsAfterSpeaking(t *testing.T) {
 	skill.after = func(context.Context) error { return errors.New("music") }
 	if _, err := runner.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "skill stub") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// wakeListener は依頼音声なしで、指定したウェイクワードを検出したことにする。
+type wakeListener string
+
+func (w wakeListener) Listen(context.Context) (Heard, error) { return Heard{Wake: string(w)}, nil }
+
+func TestRunWakeActionSkipsTranscriptionAndHistory(t *testing.T) {
+	responder := &stubResponder{}
+	runner, player, _ := newRunner(t, "使われない", responder)
+	runner.Listener = wakeListener("hey_jarvis")
+	called := 0
+	runner.WakeActions = map[string]Invocation{"hey_jarvis": func(context.Context) (Outcome, error) {
+		called++
+		return Outcome{Reply: "通話に入ります。"}, nil
+	}}
+
+	result, err := runner.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 || !result.Completed || result.Wake != "hey_jarvis" || !slices.Equal(player.spoken, []string{"通話に入ります。"}) {
+		t.Errorf("called = %d, result = %+v, spoken = %q", called, result, player.spoken)
+	}
+	if responder.calls != 0 || runner.Conversation.Turns() != 0 {
+		t.Error("AI を呼んだか、履歴に残した")
 	}
 }

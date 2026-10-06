@@ -40,6 +40,16 @@ type Music struct {
 	Enabled bool `toml:"enabled"`
 }
 
+// WakeWord は wake_model に加えて待ち受けるウェイクワード
+type WakeWord struct {
+	Model string `toml:"model"`
+	// Action は検出したときの動作。turn（既定）は wake_model と同じく依頼を聞いて一往復する
+	Action string `toml:"action"`
+}
+
+// WakeActionTurn は依頼を聞いて一往復する動作。
+const WakeActionTurn = "turn"
+
 // Skills は AI を通さずに処理するスキル。既定ではすべて無効
 type Skills struct {
 	Lists   Lists   `toml:"lists"`
@@ -58,9 +68,10 @@ type Config struct {
 	ReasoningEffort string  `toml:"reasoning_effort"`
 
 	// 検出
-	ONNXRuntime string `toml:"onnxruntime_library"`
-	WakeModel   string `toml:"wake_model"`
-	VADModel    string `toml:"vad_model"`
+	ONNXRuntime string     `toml:"onnxruntime_library"`
+	WakeModel   string     `toml:"wake_model"`
+	WakeWords   []WakeWord `toml:"wake_words"`
+	VADModel    string     `toml:"vad_model"`
 
 	// 文字起こし。whisper_server が空なら whisper_url の起動済みサーバーを使う
 	WhisperServer  string  `toml:"whisper_server"`
@@ -163,6 +174,21 @@ func (c *Config) validate() error {
 	if c.STTTimeout <= 0 || c.STTTimeout > 600 || c.AITimeout <= 0 || c.AITimeout > 1800 {
 		return errors.New("タイムアウトの設定が不正です")
 	}
+	seen := map[string]bool{WakeName(c.WakeModel): true}
+	for i := range c.WakeWords {
+		w := &c.WakeWords[i]
+		if w.Action == "" {
+			w.Action = WakeActionTurn
+		}
+		if w.Action != WakeActionTurn {
+			return fmt.Errorf("wake_wordsのactionは%sにしてください: %s", WakeActionTurn, w.Action)
+		}
+		if name := WakeName(w.Model); w.Model == "" || seen[name] {
+			return fmt.Errorf("wake_wordsのmodelが空か重複しています: %s", w.Model)
+		} else {
+			seen[name] = true
+		}
+	}
 	if c.ServiceIdleTimeout < 0 || c.ServiceIdleTimeout > 86400 {
 		return errors.New("service_idle_timeoutは0〜86400秒にしてください")
 	}
@@ -206,6 +232,20 @@ func (c *Config) Executable(value string) string {
 		return c.Path(value)
 	}
 	return value
+}
+
+// WakeName はモデルのファイル名から、ログや動作の対応づけに使う名前を作る（例: hey_jarvis_v0.1）。
+func WakeName(model string) string {
+	return strings.TrimSuffix(filepath.Base(model), filepath.Ext(model))
+}
+
+// WakeModels は待ち受けるウェイクワードのモデルを、wake_model を先頭にして返す。
+func (c *Config) WakeModels() []string {
+	models := []string{c.Path(c.WakeModel)}
+	for _, w := range c.WakeWords {
+		models = append(models, c.Path(w.Model))
+	}
+	return models
 }
 
 // Base は設定ファイルのあるディレクトリ。

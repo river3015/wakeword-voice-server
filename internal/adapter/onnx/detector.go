@@ -6,8 +6,8 @@ type Detector struct {
 	VAD  *VAD
 }
 
-func NewDetector(wakeModel, vadModel string) (*Detector, error) {
-	wake, err := NewWakeWord(wakeModel)
+func NewDetector(wakeModels []string, vadModel string) (*Detector, error) {
+	wake, err := NewWakeWord(wakeModels...)
 	if err != nil {
 		return nil, err
 	}
@@ -19,7 +19,7 @@ func NewDetector(wakeModel, vadModel string) (*Detector, error) {
 	return &Detector{Wake: wake, VAD: vad}, nil
 }
 
-func (d *Detector) Scores(frame []int16, waiting bool) (wake, speech float64, err error) {
+func (d *Detector) Scores(frame []int16, waiting bool) (wake []float64, speech float64, err error) {
 	if waiting {
 		wake, err = d.Wake.Predict(frame)
 	} else {

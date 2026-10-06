@@ -12,6 +12,7 @@ import (
 
 	"github.com/river3015/wakeword-voice-server/internal/adapter/audio"
 	"github.com/river3015/wakeword-voice-server/internal/adapter/onnx"
+	"github.com/river3015/wakeword-voice-server/internal/config"
 )
 
 // detectWake は録音済み WAV でウェイクワードのスコアを確かめる。
@@ -31,30 +32,39 @@ func detectWake(args []string) error {
 	if err := onnx.Init(cfg.Path(cfg.ONNXRuntime)); err != nil {
 		return err
 	}
-	wake, err := onnx.NewWakeWord(cfg.Path(cfg.WakeModel))
+	models := cfg.WakeModels()
+	wake, err := onnx.NewWakeWord(models...)
 	if err != nil {
 		return err
 	}
 	defer wake.Close()
-	peak, first := 0.0, -1.0
+	peaks, firsts := make([]float64, len(models)), make([]float64, len(models))
+	for i := range firsts {
+		firsts[i] = -1
+	}
 	for i := 0; i < len(samples); i += 1280 {
 		frame := make([]int16, 1280)
 		copy(frame, samples[i:])
-		score, err := wake.Predict(frame)
+		scores, err := wake.Predict(frame)
 		if err != nil {
 			return err
 		}
-		peak = max(peak, score)
-		if first < 0 && score >= cfg.Capture.WakeThreshold {
-			first = float64(i) / 16000
+		for j, score := range scores {
+			peaks[j] = max(peaks[j], score)
+			if firsts[j] < 0 && score >= cfg.Capture.WakeThreshold {
+				firsts[j] = float64(i) / 16000
+			}
 		}
 	}
-	result := map[string]any{"detected": first >= 0, "peak_score": peak}
-	if first >= 0 {
-		result["first_frame_seconds"] = first
+	// ウェイクワードごとに1行ずつ出す
+	for j, model := range models {
+		result := map[string]any{"wake": config.WakeName(model), "detected": firsts[j] >= 0, "peak_score": peaks[j]}
+		if firsts[j] >= 0 {
+			result["first_frame_seconds"] = firsts[j]
+		}
+		out, _ := json.Marshal(result)
+		fmt.Println(string(out))
 	}
-	out, _ := json.Marshal(result)
-	fmt.Println(string(out))
 	return nil
 }
 

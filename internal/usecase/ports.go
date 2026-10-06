@@ -7,10 +7,18 @@ import (
 	"iter"
 )
 
-// Listener は呼びかけを待ち、続く依頼の音声（16kHz・モノラル・16bit PCM）を返す。
-// 発話がなければ空のスライスを返す。
+// Listener は呼びかけを待ち、続く依頼の音声を返す。
 type Listener interface {
-	Listen(ctx context.Context) ([]int16, error)
+	Listen(ctx context.Context) (Heard, error)
+}
+
+// Heard は聞き取った結果。
+type Heard struct {
+	// Wake は検出したウェイクワードの名前。呼びかけなしで依頼音声を渡した場合は空
+	Wake string
+	// PCM は依頼の音声（16kHz・モノラル・16bit PCM）。発話がなかった場合と、
+	// すぐに動作するウェイクワード（WakeAction）の場合は空
+	PCM []int16
 }
 
 type Transcriber interface {
@@ -44,9 +52,10 @@ type FrameOpener interface {
 	Open(ctx context.Context) (FrameSource, error)
 }
 
-// Detector は待ち受け中はウェイクワード、録音中は発話らしさのスコアを返す。
+// Detector は待ち受け中はウェイクワードごと、録音中は発話らしさのスコアを返す。
+// wake の並びは CaptureListener.WakeWords と同じ。
 type Detector interface {
-	Scores(frame []int16, waiting bool) (wake, speech float64, err error)
+	Scores(frame []int16, waiting bool) (wake []float64, speech float64, err error)
 	Reset() error
 }
 

@@ -88,3 +88,29 @@ func TestListsSkill(t *testing.T) {
 		t.Error("空のリスト名を受け付けた")
 	}
 }
+
+func TestLoadWakeWords(t *testing.T) {
+	path := write(t, `[[wake_words]]
+model = ".models/openwakeword/hey_jarvis_v0.1.onnx"
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	models := c.WakeModels()
+	if len(models) != 2 || WakeName(models[0]) != "hey_mycroft_v0.1" || WakeName(models[1]) != "hey_jarvis_v0.1" {
+		t.Errorf("models = %v", models)
+	}
+	if c.WakeWords[0].Action != WakeActionTurn {
+		t.Errorf("action = %q", c.WakeWords[0].Action)
+	}
+	for _, body := range []string{
+		"[[wake_words]]\nmodel = \"x/hey_jarvis.onnx\"\naction = \"unknown\"\n",
+		"[[wake_words]]\nmodel = \"x/hey_mycroft_v0.1.onnx\"\n", // wake_model と重複
+		"[[wake_words]]\naction = \"turn\"\n",
+	} {
+		if _, err := Load(write(t, body)); err == nil {
+			t.Errorf("不正な設定を受け付けた: %q", body)
+		}
+	}
+}

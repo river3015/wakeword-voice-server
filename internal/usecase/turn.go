@@ -32,9 +32,12 @@ type TurnRunner struct {
 	Synthesizer  Synthesizer
 	Player       Player
 	Conversation *domain.Conversation
-	Skills       []Skill          // AI より先に試す。nil なら全て AI へ渡す
-	OnState      func(State)      // nil なら通知しない
-	Now          func() time.Time // nil なら time.Now
+	Skills       []Skill // AI より先に試す。nil なら全て AI へ渡す
+	// WakeActions は依頼を聞かずに動作するウェイクワード（Discord の通話に入るなど）。
+	// 名前は Heard.Wake。CaptureListener.Immediate にも同じ名前を入れる
+	WakeActions map[string]Invocation
+	OnState     func(State)      // nil なら通知しない
+	Now         func() time.Time // nil なら time.Now
 }
 
 // Timings は発話の終わり（録音完了）からの経過時間。返答の速さを測るために使う。
@@ -48,6 +51,7 @@ type Timings struct {
 type Result struct {
 	Completed      bool
 	Reason         string // 完了しなかった理由。no_speech、end_conversation、stop_server
+	Wake           string // 検出したウェイクワード。呼びかけなしの依頼では空
 	Skill          string // スキルが処理した場合はその名前。AI が返答した場合は空
 	Stop           bool   // サーバーを止める指示だったか
 	ReplyCharacter int
@@ -71,12 +75,16 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 	defer r.notify(StateWaiting) // 成功・失敗のどちらでも待ち受けに戻ったことを通知する
 	r.notify(StateWaiting)
 
-	pcm, err := r.Listener.Listen(ctx)
+	heard, err := r.Listener.Listen(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("listen: %w", err)
 	}
+	if action, ok := r.WakeActions[heard.Wake]; ok && heard.Wake != "" {
+		return r.runWakeAction(ctx, heard.Wake, action)
+	}
+	pcm := heard.PCM
 	if len(pcm) == 0 {
-		return Result{Reason: "no_speech"}, nil
+		return Result{Wake: heard.Wake, Reason: "no_speech"}, nil
 	}
 	// 読み上げの準備を文字起こしと並行して進める。呼びかけの時点で始めていれば何もしない
 	Prepare(r.Transcriber, r.Synthesizer)
@@ -127,7 +135,33 @@ func (r *TurnRunner) Run(ctx context.Context) (Result, error) {
 	timings.Total = r.now().Sub(start)
 	// スキルの結果も履歴に残し、続けて AI に「さっき何を追加した？」と聞けるようにする
 	r.Conversation.Remember(text, reply)
-	return Result{Completed: true, Skill: name, ReplyCharacter: len([]rune(reply)), Timings: timings}, nil
+	return Result{Completed: true, Wake: heard.Wake, Skill: name, ReplyCharacter: len([]rune(reply)), Timings: timings}, nil
+}
+
+// runWakeAction は依頼を聞かずにウェイクワードに結びついた動作を行い、返答があれば読み上げる。
+// 履歴には残さない。
+func (r *TurnRunner) runWakeAction(ctx context.Context, wake string, action Invocation) (Result, error) {
+	Prepare(r.Synthesizer)
+	start := r.now()
+	var timings Timings
+	r.notify(StateProcessing)
+	outcome, err := action(ctx)
+	if err != nil {
+		_, _ = r.respondAndSpeak(ctx, fixed(skillFailedNotice), start, &timings)
+		return Result{}, fmt.Errorf("wake %s: %w", wake, err)
+	}
+	if outcome.Reply != "" {
+		if _, err := r.respondAndSpeak(ctx, fixed(outcome.Reply), start, &timings); err != nil {
+			return Result{}, err
+		}
+	}
+	if outcome.AfterSpeech != nil {
+		if err := outcome.AfterSpeech(ctx); err != nil {
+			return Result{}, fmt.Errorf("wake %s: %w", wake, err)
+		}
+	}
+	timings.Total = r.now().Sub(start)
+	return Result{Completed: true, Wake: wake, ReplyCharacter: len([]rune(outcome.Reply)), Timings: timings}, nil
 }
 
 func (r *TurnRunner) matchSkill(text string) (Skill, Invocation) {

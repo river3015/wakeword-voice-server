@@ -21,17 +21,23 @@ const (
 	noiseSamples    = 16000 * 4
 )
 
+// WakeWord は複数のウェイクワードを判定する。重いメルスペクトログラムと埋め込みは共通で1回だけ計算し、
+// ウェイクワードごとの判定モデル（小さい）だけを並べる。
 type WakeWord struct {
-	melspec, embedding, classifier *session
-	raw                            []int16     // 直近 frameSamples+rawContext 標本
-	mel                            [][]float32 // melBins 列の行
-	features                       [][]float32 // embeddingSize 列の行
-	predictions                    int
+	melspec, embedding *session
+	classifiers        []*session
+	raw                []int16     // 直近 frameSamples+rawContext 標本
+	mel                [][]float32 // melBins 列の行
+	features           [][]float32 // embeddingSize 列の行
+	predictions        int
 }
 
-// NewWakeWord は判定モデルと同じディレクトリにある共有モデルも読み込む。
-func NewWakeWord(modelPath string) (*WakeWord, error) {
-	dir := filepath.Dir(modelPath)
+// NewWakeWord は判定モデルと、最初の判定モデルと同じディレクトリにある共有モデルを読み込む。
+func NewWakeWord(modelPaths ...string) (*WakeWord, error) {
+	if len(modelPaths) == 0 {
+		return nil, errors.New("ウェイクワードの判定モデルを指定してください")
+	}
+	dir := filepath.Dir(modelPaths[0])
 	w := &WakeWord{}
 	var err error
 	if w.melspec, err = newSession(filepath.Join(dir, "melspectrogram.onnx")); err != nil {
@@ -41,9 +47,13 @@ func NewWakeWord(modelPath string) (*WakeWord, error) {
 		w.Close()
 		return nil, err
 	}
-	if w.classifier, err = newSession(modelPath); err != nil {
-		w.Close()
-		return nil, err
+	for _, path := range modelPaths {
+		classifier, err := newSession(path)
+		if err != nil {
+			w.Close()
+			return nil, err
+		}
+		w.classifiers = append(w.classifiers, classifier)
 	}
 	if err := w.Reset(); err != nil {
 		w.Close()
@@ -55,7 +65,9 @@ func NewWakeWord(modelPath string) (*WakeWord, error) {
 func (w *WakeWord) Close() {
 	w.melspec.destroy()
 	w.embedding.destroy()
-	w.classifier.destroy()
+	for _, c := range w.classifiers {
+		c.destroy()
+	}
 }
 
 // Reset は上流と同じく、メルバッファを1で、埋め込みバッファを雑音の埋め込みで初期化する。
@@ -78,10 +90,10 @@ func (w *WakeWord) Reset() error {
 	return nil
 }
 
-// Predict は80msの1フレームを受け取り、0〜1のスコアを返す。
-func (w *WakeWord) Predict(frame []int16) (float64, error) {
+// Predict は80msの1フレームを受け取り、判定モデルごとに0〜1のスコアを返す。
+func (w *WakeWord) Predict(frame []int16) ([]float64, error) {
 	if len(frame) != frameSamples {
-		return 0, errors.New("ウェイクワード入力は1280標本にしてください")
+		return nil, errors.New("ウェイクワード入力は1280標本にしてください")
 	}
 	w.raw = append(w.raw, frame...)
 	if over := len(w.raw) - (frameSamples + rawContext); over > 0 {
@@ -89,32 +101,35 @@ func (w *WakeWord) Predict(frame []int16) (float64, error) {
 	}
 	rows, err := w.melspectrogram(w.raw)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	w.mel = keepLast(append(w.mel, rows...), melMaxRows)
 
 	window := w.mel[len(w.mel)-melWindow:]
 	embedding, err := w.embed(flatten(window), 1)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	w.features = keepLast(append(w.features, embedding...), featureMaxRows)
 
 	input, err := tensor(flatten(w.features[len(w.features)-classifierFrame:]), 1, classifierFrame, embeddingSize)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer input.Destroy()
-	out, err := w.classifier.run(input)
-	if err != nil {
-		return 0, fmt.Errorf("wake classifier: %w", err)
+	scores := make([]float64, len(w.classifiers))
+	for i, classifier := range w.classifiers {
+		out, err := classifier.run(input)
+		if err != nil {
+			return nil, fmt.Errorf("wake classifier: %w", err)
+		}
+		scores[i] = float64(out[0].data[0])
 	}
-	score := float64(out[0].data[0])
 	if w.predictions < warmupFrames {
 		w.predictions++
-		return 0, nil
+		clear(scores)
 	}
-	return score, nil
+	return scores, nil
 }
 
 func (w *WakeWord) melspectrogram(samples []int16) ([][]float32, error) {

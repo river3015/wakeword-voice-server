@@ -19,7 +19,7 @@
 | 日本語読み上げ | VOICEVOX ENGINE 0.25.2 | 文ごとに合成し、再生と並行して次の文を合成 |
 | 常駐 | `wakeword serve`。LaunchAgent用plistを生成可能 | ターミナル起動を確認。LaunchAgentは未登録 |
 
-既定のウェイクワードは「Hey Mycroft」。openWakeWordの同梱モデルは非商用限定という前提で使う。ライセンスは[調査メモ](licensing-and-costs.md)を参照。
+既定のウェイクワードは「Hey Mycroft」。`[[wake_words]]`で「Hey Jarvis」などを追加できる。メルスペクトログラムと埋め込みは共通で1回だけ計算し、ウェイクワードごとの小さな判定モデルだけを並べる。2026-10-07の計測では、80msの1フレームの処理が約1.5ms、判定モデル1つの追加分は約0.025msだった。openWakeWordの同梱モデルは非商用限定という前提で使う。ライセンスは[調査メモ](licensing-and-costs.md)を参照。
 
 ## 構成
 

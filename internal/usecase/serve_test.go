@@ -17,13 +17,13 @@ type sequenceListener struct {
 	calls   int
 }
 
-func (s *sequenceListener) Listen(context.Context) ([]int16, error) {
+func (s *sequenceListener) Listen(context.Context) (Heard, error) {
 	err := s.results[s.calls]
 	s.calls++
 	if err != nil {
-		return nil, err
+		return Heard{}, err
 	}
-	return []int16{1}, nil
+	return Heard{PCM: []int16{1}}, nil
 }
 
 func TestServeRecoversAfterFailureAndStops(t *testing.T) {
@@ -84,17 +84,21 @@ func (o opener) Open(context.Context) (FrameSource, error) { return o.source, ni
 // scriptedDetector は1フレーム目で呼びかけを検出し、その後 speech フレームだけ発話とする。
 type scriptedDetector struct {
 	calls, speech, resets int
+	wake                  []float64 // 待ち受け中に返すスコア。nil なら1つ目が1
 }
 
-func (d *scriptedDetector) Scores(_ []int16, waiting bool) (float64, float64, error) {
+func (d *scriptedDetector) Scores(_ []int16, waiting bool) ([]float64, float64, error) {
 	d.calls++
 	if waiting {
-		return 1, 0, nil
+		if d.wake != nil {
+			return d.wake, 0, nil
+		}
+		return []float64{1}, 0, nil
 	}
 	if d.calls <= 1+d.speech {
-		return 0, 1, nil
+		return nil, 1, nil
 	}
-	return 0, 0, nil
+	return nil, 0, nil
 }
 func (d *scriptedDetector) Reset() error { d.resets++; return nil }
 
@@ -107,10 +111,11 @@ func TestCaptureListenerCollectsUtterance(t *testing.T) {
 	listener := &CaptureListener{Opener: opener{&scriptedSource{frames: 100}}, Detector: detector,
 		Settings: settings, OnState: func(s State) { states = append(states, s) }, OnRecording: func() { cues++ }}
 
-	pcm, err := listener.Listen(context.Background())
+	heard, err := listener.Listen(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	pcm := heard.PCM
 	// 発話5フレーム＋無音1.2秒（15フレーム）
 	if len(pcm) != 20*domain.FrameSamples {
 		t.Errorf("samples = %d", len(pcm))
@@ -123,8 +128,40 @@ func TestCaptureListenerCollectsUtterance(t *testing.T) {
 func TestCaptureListenerInputEnded(t *testing.T) {
 	listener := &CaptureListener{Opener: opener{&scriptedSource{frames: 3}}, Detector: &scriptedDetector{},
 		Settings: domain.DefaultCaptureSettings()}
-	pcm, err := listener.Listen(context.Background())
-	if err != nil || pcm != nil {
-		t.Errorf("pcm = %d, err = %v", len(pcm), err)
+	heard, err := listener.Listen(context.Background())
+	if err != nil || heard.PCM != nil {
+		t.Errorf("pcm = %d, err = %v", len(heard.PCM), err)
+	}
+}
+
+func TestCaptureListenerReportsStrongestWakeWord(t *testing.T) {
+	settings := domain.DefaultCaptureSettings()
+	settings.SettleSeconds = 0
+	listener := &CaptureListener{Opener: opener{&scriptedSource{frames: 100}},
+		Detector: &scriptedDetector{speech: 5, wake: []float64{0.6, 0.9}}, Settings: settings,
+		WakeWords: []string{"hey_mycroft", "hey_jarvis"}}
+
+	heard, err := listener.Listen(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if heard.Wake != "hey_jarvis" || len(heard.PCM) == 0 {
+		t.Errorf("wake = %q, pcm = %d", heard.Wake, len(heard.PCM))
+	}
+}
+
+func TestCaptureListenerReturnsImmediateWakeWithoutRecording(t *testing.T) {
+	source := &scriptedSource{frames: 100}
+	cues := 0
+	listener := &CaptureListener{Opener: opener{source}, Detector: &scriptedDetector{wake: []float64{0, 0.9}},
+		Settings: domain.DefaultCaptureSettings(), WakeWords: []string{"hey_mycroft", "hey_jarvis"},
+		Immediate: map[string]bool{"hey_jarvis": true}, OnRecording: func() { cues++ }}
+
+	heard, err := listener.Listen(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if heard.Wake != "hey_jarvis" || heard.PCM != nil || cues != 0 || source.frames != 99 {
+		t.Errorf("heard = %+v, cues = %d, frames left = %d", heard, cues, source.frames)
 	}
 }

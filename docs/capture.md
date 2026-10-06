@@ -8,7 +8,7 @@ bin/wakeword detect-wake --config config.local.toml /absolute/path/wake.wav
 bin/wakeword serve --config config.local.toml --max-cycles 1 --listen 30s
 ```
 
-`detect-wake`は録音済みWAVでウェイクワードのスコアを確かめる。マイクは`input_device`にデバイス名の一部を書いて選び、空ならOSの既定を使う。macOSのマイク許可が必要で、許可設定を自動では変更しない。Go版には、AIを呼ばずに収集だけを行うコマンドや、依頼音声を保存するオプションはない。音声はメモリ上に保持して破棄する。
+`detect-wake`は録音済みWAVでウェイクワードのスコアを確かめる。`[[wake_words]]`で追加したものも含め、ウェイクワードごとに1行ずつ出す。マイクは`input_device`にデバイス名の一部を書いて選び、空ならOSの既定を使う。macOSのマイク許可が必要で、許可設定を自動では変更しない。Go版には、AIを呼ばずに収集だけを行うコマンドや、依頼音声を保存するオプションはない。音声はメモリ上に保持して破棄する。
 
 ## 状態と制限
 
@@ -33,3 +33,4 @@ Go版でも同じ判定ロジックを移植し、上記の状態管理のテス
 - 内蔵マイクを3秒間開き、38フレームを取得。保存・外部送信は行わず正常終了。
 - GPU経路はこのsandboxで失敗したため、Whisperの既定をCPUにしていた。Go版ではwhisper-serverのMetal経路が動作し、既定をGPUに戻した。
 - 人がマイクへ呼びかけて依頼する一連の動作、距離・雑音下の精度は未検証。受付音、AI、読み上げ、会話継続は次のフェーズ。
+- 2つのウェイクワード（2026-10-07）：macOSの`say -v Samantha`で作った「Hey Jarvis」「Hey Mycroft」と、日本語の雑談（Kyoko、「ジャービス」を含む）を`detect-wake`で確かめた。Hey Jarvisは0.72秒でスコア0.99、Hey Mycroftのスコアは0。Hey Mycroftは1.0、Hey Jarvisは0.0002。雑談はどちらも0.001未満。「Hey Jarvis」＋「今日の天気は？」を`--realtime`で流し、天気のスキルが答えて`wake`が`hey_jarvis_v0.1`になった。人の声と、長時間の待ち受けでの誤検出は未確認。

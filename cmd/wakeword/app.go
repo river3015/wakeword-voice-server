@@ -86,7 +86,7 @@ func start(parent context.Context, cfg *config.Config, microphone bool) (*app, c
 	if err := onnx.Init(cfg.Path(cfg.ONNXRuntime)); err != nil {
 		return nil, nil, err
 	}
-	if a.detector, err = onnx.NewDetector(cfg.Path(cfg.WakeModel), cfg.Path(cfg.VADModel)); err != nil {
+	if a.detector, err = onnx.NewDetector(cfg.WakeModels(), cfg.Path(cfg.VADModel)); err != nil {
 		return nil, nil, fmt.Errorf("検出モデルを読み込めません: %w", err)
 	}
 	if cfg.PreventSleep && microphone {
@@ -297,8 +297,12 @@ func (a *app) speaker() *audio.Speaker {
 }
 
 func (a *app) captureListener(opener usecase.FrameOpener, maxWait time.Duration) *usecase.CaptureListener {
+	var names []string
+	for _, model := range a.cfg.WakeModels() {
+		names = append(names, config.WakeName(model))
+	}
 	l := &usecase.CaptureListener{Opener: opener, Detector: a.detector, Settings: a.cfg.Capture,
-		MaxWait: maxWait, OnState: logState, OnRecording: a.prepare}
+		WakeWords: names, MaxWait: maxWait, OnState: logState, OnRecording: a.prepare}
 	if a.cfg.ReceiptCue {
 		cue, speaker := audio.Cue(), a.speaker()
 		l.OnRecording = func() {

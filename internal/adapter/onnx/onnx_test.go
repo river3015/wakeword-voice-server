@@ -38,7 +38,7 @@ func setup(t *testing.T) (*Detector, map[string]struct{ Wake, VAD []float64 }) {
 	if err := Init(lib); err != nil {
 		t.Fatal(err)
 	}
-	d, err := NewDetector(filepath.Join(models, "hey_mycroft_v0.1.onnx"), filepath.Join(models, "silero_vad.onnx"))
+	d, err := NewDetector([]string{filepath.Join(models, "hey_mycroft_v0.1.onnx")}, filepath.Join(models, "silero_vad.onnx"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,10 +61,11 @@ func TestScoresMatchPython(t *testing.T) {
 		for i := 0; i*frameSamples < len(samples); i++ {
 			frame := make([]int16, frameSamples)
 			copy(frame, samples[i*frameSamples:])
-			wake, err := d.Wake.Predict(frame)
+			scores, err := d.Wake.Predict(frame)
 			if err != nil {
 				t.Fatal(err)
 			}
+			wake := scores[0]
 			speech, err := d.VAD.Predict(frame)
 			if err != nil {
 				t.Fatal(err)

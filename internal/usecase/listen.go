@@ -15,23 +15,28 @@ type CaptureListener struct {
 	Opener   FrameOpener
 	Detector Detector
 	Settings domain.CaptureSettings
+	// WakeWords は Detector が返すスコアの並びに対応するウェイクワードの名前
+	WakeWords []string
+	// Immediate は依頼を録音せず、検出した時点で返すウェイクワード。WakeAction を持つものに使う
+	Immediate map[string]bool
 	// MaxWait は呼びかけを待つ上限。0なら無期限。録音中に達した場合は録音を終えるまで続ける
 	MaxWait     time.Duration
 	OnState     func(State)
 	OnRecording func() // 受付音を鳴らすなど。録音を止めないよう、すぐ戻ること
 }
 
-func (l *CaptureListener) Listen(ctx context.Context) ([]int16, error) {
+func (l *CaptureListener) Listen(ctx context.Context) (Heard, error) {
 	if err := l.Detector.Reset(); err != nil {
-		return nil, fmt.Errorf("detector: %w", err)
+		return Heard{}, fmt.Errorf("detector: %w", err)
 	}
 	source, err := l.Opener.Open(ctx)
 	if err != nil {
-		return nil, err
+		return Heard{}, err
 	}
 	defer source.Close()
 
 	recorder := domain.NewRecorder(l.Settings)
+	wake := ""
 	deadline := time.Time{}
 	if l.MaxWait > 0 {
 		deadline = time.Now().Add(l.MaxWait)
@@ -39,24 +44,35 @@ func (l *CaptureListener) Listen(ctx context.Context) ([]int16, error) {
 	for {
 		waiting := recorder.State() == domain.RecorderWaiting
 		if waiting && !deadline.IsZero() && time.Now().After(deadline) {
-			return nil, nil
+			return Heard{}, nil
 		}
 		frame, err := source.Next(ctx)
 		if errors.Is(err, io.EOF) {
-			return nil, nil
+			return Heard{}, nil
 		}
 		if err != nil {
-			return nil, err
+			return Heard{}, err
 		}
-		wake, speech, err := l.Detector.Scores(frame, waiting)
+		scores, speech, err := l.Detector.Scores(frame, waiting)
 		if err != nil {
-			return nil, fmt.Errorf("detector: %w", err)
+			return Heard{}, fmt.Errorf("detector: %w", err)
 		}
-		utterance, err := recorder.Feed(frame, wake, speech)
+		best := strongest(scores)
+		score := 0.0
+		if best >= 0 {
+			score = scores[best]
+		}
+		utterance, err := recorder.Feed(frame, score, speech)
 		if err != nil {
-			return nil, err
+			return Heard{}, err
 		}
 		if waiting && recorder.State() == domain.RecorderRecording {
+			if best < len(l.WakeWords) {
+				wake = l.WakeWords[best]
+			}
+			if l.Immediate[wake] {
+				return Heard{Wake: wake}, nil
+			}
 			if l.OnState != nil {
 				l.OnState(StateRecording)
 			}
@@ -65,7 +81,18 @@ func (l *CaptureListener) Listen(ctx context.Context) ([]int16, error) {
 			}
 		}
 		if utterance != nil {
-			return utterance.PCM, nil
+			return Heard{Wake: wake, PCM: utterance.PCM}, nil
 		}
 	}
+}
+
+// strongest は最もスコアの高いウェイクワードの位置を返す。空なら -1。
+func strongest(scores []float64) int {
+	best := -1
+	for i, s := range scores {
+		if best < 0 || s > scores[best] {
+			best = i
+		}
+	}
+	return best
 }
